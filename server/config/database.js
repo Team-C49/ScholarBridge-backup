@@ -1,6 +1,3 @@
-// In-memory database for demo purposes
-// In production, replace with actual database (MongoDB, PostgreSQL, etc.)
-
 let users = [];
 let otpStore = new Map();
 

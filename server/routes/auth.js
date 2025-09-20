@@ -22,16 +22,14 @@ const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Rate limiting for auth endpoints
 const authLimiter = require('express-rate-limit')({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
+  windowMs: 15 * 60 * 1000, 
+  max: 5, 
   message: 'Too many authentication attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// Signup - Step 1: Create account
 router.post('/signup', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -90,7 +88,6 @@ router.post('/signup', authLimiter, async (req, res) => {
     const emailResult = await sendOTPEmail(email, otp);
     if (!emailResult.success) {
       console.error('Failed to send OTP email:', emailResult.error);
-      // In production, you might want to handle this differently
     }
 
     res.json({
