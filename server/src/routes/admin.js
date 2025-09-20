@@ -10,7 +10,6 @@ const crypto = require('crypto');
 
 router.use(authMiddleware, requireRole('superadmin'));
 
-// list pending trust registration requests
 router.get('/trust-requests', async (req, res) => {
   try {
     const { rows } = await db.query(`SELECT * FROM trust_registration_requests WHERE status='pending' ORDER BY submitted_at DESC`);
@@ -21,7 +20,6 @@ router.get('/trust-requests', async (req, res) => {
   }
 });
 
-// approve trust request -> create user + trusts entry
 router.post('/trust-requests/:id/approve', async (req, res) => {
   try {
     const adminId = req.user.id;
@@ -30,32 +28,26 @@ router.post('/trust-requests/:id/approve', async (req, res) => {
     if (!reqRowRes.rows.length) return res.status(404).json({ error: 'Request not found or already processed' });
     const request = reqRowRes.rows[0];
 
-    // create trust user with secure temp password
-    const tempPassword = crypto.randomBytes(8).toString('base64').slice(0,12); // 12 chars
+    const tempPassword = crypto.randomBytes(8).toString('base64').slice(0,12);
     const pwdHash = await hashPassword(tempPassword);
     const trustUserId = uuidv4();
     await db.query(`INSERT INTO users(id,email,password_hash,role) VALUES($1,$2,$3,'trust')`, [trustUserId, request.registration_email.toLowerCase(), pwdHash]);
 
-    // insert trusts row
-    await db.query(`INSERT INTO trusts(user_id, org_name, contact_phone, contact_email, website, year_established, address, registration_number, is_active)
-                    VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)`, [trustUserId, request.org_name, request.contact_phone, request.contact_email, request.website, request.year_established, JSON.stringify(request.address), request.registration_number]);
+    await db.query(`INSERT INTO trusts(user_id, org_name, contact_phone, contact_email, website, year_established, address, registration_number, is_active, created_at)
+                    VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,now())`, [trustUserId, request.org_name, request.contact_phone, request.contact_email, request.website, request.year_established, JSON.stringify(request.address), request.registration_number]);
 
-    // update request status
     await db.query(`UPDATE trust_registration_requests SET status='approved', reviewed_by=$1, reviewed_at=now(), admin_notes=$2 WHERE id=$3`, [adminId, 'Approved', reqId]);
 
-    // send temp credentials
-    await sendMail({ to: request.registration_email, subject: `${process.env.APP_NAME} — Trust account created`, text: `Your username: ${request.registration_email}\nTemporary password: ${tempPassword}\nPlease login and change your password.` });
+    await sendMail({ to: request.registration_email, subject: `${process.env.APP_NAME} - Trust account created`, text: `Your username: ${request.registration_email}\nTemporary password: ${tempPassword}\nPlease login and change your password.` });
 
     await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'approve_trust',$2)`, [adminId, JSON.stringify({ requestId: reqId, trustUserId })]);
-
-    return res.json({ message: 'Trust approved and user created' });
+    return res.json({ message: 'Approved and created trust user' });
   } catch (err) {
     console.error('admin approve trust error', err);
     return res.status(500).json({ error: 'Server error' });
   }
 });
 
-// reject trust request
 router.post('/trust-requests/:id/reject', async (req, res) => {
   try {
     const adminId = req.user.id;
@@ -70,7 +62,6 @@ router.post('/trust-requests/:id/reject', async (req, res) => {
   }
 });
 
-// list issues (open)
 router.get('/issues', async (req, res) => {
   try {
     const { rows } = await db.query(`SELECT * FROM issues ORDER BY created_at DESC LIMIT 200`);
@@ -81,7 +72,6 @@ router.get('/issues', async (req, res) => {
   }
 });
 
-// resolve issue
 router.put('/issues/:id/resolve', async (req, res) => {
   try {
     const adminId = req.user.id;
@@ -97,7 +87,6 @@ router.put('/issues/:id/resolve', async (req, res) => {
   }
 });
 
-// blacklist a user (student or trust)
 router.post('/blacklist', async (req, res) => {
   try {
     const adminId = req.user.id;
