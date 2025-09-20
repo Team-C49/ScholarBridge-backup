@@ -16,7 +16,9 @@
     "nodemailer": "^6.9.7",
     "crypto": "^1.0.1",
     "helmet": "^7.1.0",
-    "express-rate-limit": "^7.1.5"
+    "express-rate-limit": "^7.1.5",
+    "pg": "^8.11.3",
+    "pg-pool": "^3.6.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
