@@ -22,37 +22,63 @@ router.post('/applications', async (req, res) => {
   try {
     const userId = req.user.id;
     const { academic_year, total_amount_requested, current_course_name, school_college_name, education_history, family_members, current_expenses } = req.body;
+
     if (!academic_year || total_amount_requested == null) return res.status(400).json({ error: 'academic_year and total_amount_requested required' });
 
-    const profRes = await db.query(`SELECT full_name, phone_number, date_of_birth, gender, address, profile_picture_url, bank_details_masked FROM student_profiles WHERE user_id=$1`, [userId]);
+    const profRes = await db.query(
+      `SELECT full_name, phone_number, date_of_birth, gender, address, profile_picture_url, bank_details_masked FROM student_profiles WHERE user_id=$1`,
+      [userId]
+    );
     const prof = profRes.rows[0] || {};
     const snapshot = { profile: prof, created_at: new Date().toISOString() };
 
     const appId = uuidv4();
     const ins = `INSERT INTO applications(id, student_user_id, academic_year, current_course_name, school_college_name, total_amount_requested, application_snapshot, created_at)
                  VALUES($1,$2,$3,$4,$5,$6,$7,now()) RETURNING *`;
-    const { rows } = await db.query(ins, [appId, userId, academic_year, current_course_name || null, school_college_name || null, total_amount_requested, JSON.stringify(snapshot)]);
+    const { rows } = await db.query(ins, [
+      appId,
+      userId,
+      academic_year,
+      current_course_name || null,
+      school_college_name || null,
+      total_amount_requested,
+      snapshot, // pass object -> will be stored in jsonb
+    ]);
 
     if (Array.isArray(education_history)) {
       for (const e of education_history) {
-        await db.query(`INSERT INTO education_history(id, application_id, institution_name, qualification, year_of_passing, grade, marksheet_doc_id)
-                        VALUES($1,$2,$3,$4,$5,$6,$7)`, [uuidv4(), appId, e.institution_name, e.qualification, e.year_of_passing, e.grade, e.marksheet_doc_id || null]);
-      }
-    }
-    if (Array.isArray(family_members)) {
-      for (const f of family_members) {
-        await db.query(`INSERT INTO family_members(id, application_id, name, relation, age, occupation, monthly_income, income_proof_doc_id)
-                        VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [uuidv4(), appId, f.name, f.relation, f.age || null, f.occupation || null, f.monthly_income || null, f.income_proof_doc_id || null]);
-      }
-    }
-    if (Array.isArray(current_expenses)) {
-      for (const ex of current_expenses) {
-        await db.query(`INSERT INTO current_expenses(id, application_id, expense_name, amount, proof_doc_id)
-                        VALUES($1,$2,$3,$4,$5)`, [uuidv4(), appId, ex.expense_name, ex.amount, ex.proof_doc_id || null]);
+        await db.query(
+          `INSERT INTO education_history(id, application_id, institution_name, qualification, year_of_passing, grade, marksheet_doc_id)
+           VALUES($1,$2,$3,$4,$5,$6,$7)`,
+          [uuidv4(), appId, e.institution_name, e.qualification, e.year_of_passing, e.grade, e.marksheet_doc_id || null]
+        );
       }
     }
 
-    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'create_application',$2)`, [userId, JSON.stringify({ application_id: appId })]);
+    if (Array.isArray(family_members)) {
+      for (const f of family_members) {
+        await db.query(
+          `INSERT INTO family_members(id, application_id, name, relation, age, occupation, monthly_income, income_proof_doc_id)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [uuidv4(), appId, f.name, f.relation, f.age || null, f.occupation || null, f.monthly_income || null, f.income_proof_doc_id || null]
+        );
+      }
+    }
+
+    if (Array.isArray(current_expenses)) {
+      for (const ex of current_expenses) {
+        await db.query(
+          `INSERT INTO current_expenses(id, application_id, expense_name, amount, proof_doc_id)
+           VALUES($1,$2,$3,$4,$5)`,
+          [uuidv4(), appId, ex.expense_name, ex.amount, ex.proof_doc_id || null]
+        );
+      }
+    }
+
+    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'create_application',$2)`, [
+      userId,
+      JSON.stringify({ application_id: appId }),
+    ]);
     return res.status(201).json({ application: rows[0] });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Application already exists for this year' });
@@ -103,7 +129,10 @@ router.delete('/applications/:id', async (req, res) => {
     if (Number(aprCount) > 0) return res.status(400).json({ error: 'Cannot delete: approvals exist' });
 
     await db.query(`DELETE FROM applications WHERE id=$1`, [appId]);
-    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'delete_application',$2)`, [userId, JSON.stringify({ application_id: appId })]);
+    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'delete_application',$2)`, [
+      userId,
+      JSON.stringify({ application_id: appId }),
+    ]);
     return res.json({ message: 'Application deleted' });
   } catch (err) {
     console.error('delete application error', err);
@@ -121,7 +150,10 @@ router.post('/applications/:appId/confirm/:approvalId', async (req, res) => {
     const upd = await db.query(`UPDATE application_approvals SET student_confirmed_receipt = true WHERE id=$1 AND application_id=$2 RETURNING *`, [approvalId, appId]);
     if (!upd.rows.length) return res.status(404).json({ error: 'Approval not found' });
 
-    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'student_confirm_receipt',$2)`, [userId, JSON.stringify({ application_id: appId, approval_id: approvalId })]);
+    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'student_confirm_receipt',$2)`, [
+      userId,
+      JSON.stringify({ application_id: appId, approval_id: approvalId }),
+    ]);
     return res.json({ updated: upd.rows[0] });
   } catch (err) {
     console.error('confirm receipt error', err);
@@ -139,7 +171,10 @@ router.post('/documents', async (req, res) => {
     const sql = `INSERT INTO documents(id, owner_id, owner_type, doc_type, file_url, uploaded_by_user_id, created_at)
                  VALUES($1,$2,$3,$4,$5,$6,now()) RETURNING *`;
     const { rows } = await db.query(sql, [id, owner_id, owner_type, doc_type, file_url, userId]);
-    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'upload_document',$2)`, [userId, JSON.stringify({ docId: id, owner_type, owner_id })]);
+    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'upload_document',$2)`, [
+      userId,
+      JSON.stringify({ docId: id, owner_type, owner_id }),
+    ]);
     return res.status(201).json({ document: rows[0] });
   } catch (err) {
     console.error('student documents error', err);

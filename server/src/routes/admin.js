@@ -28,19 +28,35 @@ router.post('/trust-requests/:id/approve', async (req, res) => {
     if (!reqRowRes.rows.length) return res.status(404).json({ error: 'Request not found or already processed' });
     const request = reqRowRes.rows[0];
 
-    const tempPassword = crypto.randomBytes(8).toString('base64').slice(0,12);
+    const tempPassword = crypto.randomBytes(8).toString('base64').slice(0, 12);
     const pwdHash = await hashPassword(tempPassword);
     const trustUserId = uuidv4();
-    await db.query(`INSERT INTO users(id,email,password_hash,role) VALUES($1,$2,$3,'trust')`, [trustUserId, request.registration_email.toLowerCase(), pwdHash]);
 
-    await db.query(`INSERT INTO trusts(user_id, org_name, contact_phone, contact_email, website, year_established, address, registration_number, is_active, created_at)
-                    VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,now())`, [trustUserId, request.org_name, request.contact_phone, request.contact_email, request.website, request.year_established, JSON.stringify(request.address), request.registration_number]);
+    await db.query(`INSERT INTO users(id, email, password_hash, role, created_at, updated_at) VALUES($1,$2,$3,'trust',now(),now())`, [
+      trustUserId,
+      request.registration_email.toLowerCase(),
+      pwdHash,
+    ]);
+
+    await db.query(
+      `INSERT INTO trusts(user_id, org_name, contact_phone, contact_email, website, year_established, address, registration_number, is_active, created_at, updated_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,now(),now())`,
+      [trustUserId, request.org_name, request.contact_phone, request.contact_email || null, request.website || null, request.year_established || null, request.address || {}, request.registration_number]
+    );
 
     await db.query(`UPDATE trust_registration_requests SET status='approved', reviewed_by=$1, reviewed_at=now(), admin_notes=$2 WHERE id=$3`, [adminId, 'Approved', reqId]);
 
-    await sendMail({ to: request.registration_email, subject: `${process.env.APP_NAME} - Trust account created`, text: `Your username: ${request.registration_email}\nTemporary password: ${tempPassword}\nPlease login and change your password.` });
+    // Send email (best-effort)
+    await sendMail({
+      to: request.registration_email,
+      subject: `${process.env.APP_NAME || 'ScholarBridge'} - Trust account created`,
+      text: `Your username: ${request.registration_email}\nTemporary password: ${tempPassword}\nPlease login and change your password.`,
+    }).catch((e) => console.warn('sendMail failed (non-fatal):', e.message));
 
-    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'approve_trust',$2)`, [adminId, JSON.stringify({ requestId: reqId, trustUserId })]);
+    await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'approve_trust',$2)`, [
+      adminId,
+      JSON.stringify({ requestId: reqId, trustUserId }),
+    ]);
     return res.json({ message: 'Approved and created trust user' });
   } catch (err) {
     console.error('admin approve trust error', err);
@@ -53,7 +69,11 @@ router.post('/trust-requests/:id/reject', async (req, res) => {
     const adminId = req.user.id;
     const reqId = req.params.id;
     const { reason } = req.body;
-    await db.query(`UPDATE trust_registration_requests SET status='rejected', admin_notes=$1, reviewed_by=$2, reviewed_at=now() WHERE id=$3`, [reason || 'Rejected', adminId, reqId]);
+    await db.query(`UPDATE trust_registration_requests SET status='rejected', admin_notes=$1, reviewed_by=$2, reviewed_at=now() WHERE id=$3`, [
+      reason || 'Rejected',
+      adminId,
+      reqId,
+    ]);
     await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'reject_trust',$2)`, [adminId, JSON.stringify({ requestId: reqId, reason })]);
     return res.json({ message: 'Rejected' });
   } catch (err) {
@@ -93,7 +113,9 @@ router.post('/blacklist', async (req, res) => {
     const { user_id, reason } = req.body;
     if (!user_id) return res.status(400).json({ error: 'user_id required' });
     await db.query(`UPDATE users SET is_blacklisted=true, updated_at=now() WHERE id=$1`, [user_id]);
+    // If it's a trust user, deactivate the trust record if exists
     await db.query(`UPDATE trusts SET is_active=false, updated_at=now() WHERE user_id=$1`, [user_id]);
+
     await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'blacklist_user',$2)`, [adminId, JSON.stringify({ user_id, reason })]);
     return res.json({ message: 'User blacklisted' });
   } catch (err) {
