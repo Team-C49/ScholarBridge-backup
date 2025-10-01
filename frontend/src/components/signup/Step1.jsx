@@ -72,7 +72,7 @@ const Step1 = ({ nextStep, handleChange, values, loading }) => {
 
         <div className="flex justify-between items-center pt-4">
           <Link
-            to=""
+            to="/trust-registration"
             className="text-sm text-blue-600 hover:underline border-b border-dotted border-blue-600"
           >
             Are you a Trust/NGO?

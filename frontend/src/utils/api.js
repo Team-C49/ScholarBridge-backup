@@ -37,4 +37,83 @@ api.interceptors.response.use(
   }
 );
 
+// Trust registration API functions
+export const trustApi = {
+  // Submit trust registration request
+  registerTrust: async (formData) => {
+    try {
+      const response = await api.post('/trusts/register-request', formData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to register trust' };
+    }
+  },
+
+  // Upload documents for trust registration
+  uploadTrustDocuments: async (requestId, documents) => {
+    try {
+      console.log('🔍 trustApi.uploadTrustDocuments called:');
+      console.log('  - Request ID:', requestId);
+      console.log('  - Documents provided:', {
+        registrationCertificate: documents.registrationCertificate ? documents.registrationCertificate.name : null,
+        trustDeed: documents.trustDeed ? documents.trustDeed.name : null
+      });
+
+      const formData = new FormData();
+      let fileCount = 0;
+      
+      if (documents.registrationCertificate) {
+        formData.append('registrationCertificate', documents.registrationCertificate);
+        fileCount++;
+        console.log('  ✅ Added registration certificate to FormData');
+      }
+      if (documents.trustDeed) {
+        formData.append('trustDeed', documents.trustDeed);
+        fileCount++;
+        console.log('  ✅ Added trust deed to FormData');
+      }
+
+      if (fileCount === 0) {
+        throw new Error('No files provided for upload');
+      }
+
+      const uploadUrl = `/trusts/register-request/${requestId}/documents`;
+      console.log('📤 Sending POST request to:', uploadUrl);
+      console.log('  - File count:', fileCount);
+
+      const response = await api.post(uploadUrl, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      console.log('✅ Upload API response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ trustApi.uploadTrustDocuments error:', error);
+      throw error.response?.data || { error: 'Failed to upload documents' };
+    }
+  },
+
+  // Check registration status
+  checkRegistrationStatus: async (requestId) => {
+    try {
+      const response = await api.get(`/trusts/register-request/${requestId}/status`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to check registration status' };
+    }
+  },
+
+  // Resend confirmation email
+  resendConfirmation: async (requestId) => {
+    try {
+      const response = await api.post(`/trusts/register-request/${requestId}/resend-confirmation`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to resend confirmation' };
+    }
+  }
+};
+
 export { api };

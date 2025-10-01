@@ -98,9 +98,22 @@ class DocumentService {
       'registration_certificate': {
         folder: 'trust-documents/registration',
         allowedTypes: [
-          'application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+          // PDF files
+          'application/pdf',
+          // Image files
+          'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp',
+          // Word documents
           'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          // Excel files
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          // PowerPoint files
+          'application/vnd.ms-powerpoint',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          // Text files
+          'text/plain', 'text/rtf',
+          'application/rtf'
         ],
         maxSize: 10 * 1024 * 1024,
         description: 'Registration Certificate'
@@ -108,9 +121,22 @@ class DocumentService {
       'trust_deed': {
         folder: 'trust-documents/deeds',
         allowedTypes: [
+          // PDF files
           'application/pdf',
+          // Image files
+          'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp',
+          // Word documents
           'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          // Excel files
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          // PowerPoint files
+          'application/vnd.ms-powerpoint',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          // Text files
+          'text/plain', 'text/rtf',
+          'application/rtf'
         ],
         maxSize: 20 * 1024 * 1024,
         description: 'Trust Deed'
