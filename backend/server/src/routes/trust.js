@@ -51,42 +51,100 @@ router.post('/register-request', async (req, res) => {
 
     const email = registrationEmail.trim().toLowerCase();
     
-    // Check if email already exists
+    // Check if email is blacklisted - if so, deny registration
+    const blacklistCheck = await db.query(
+      'SELECT id, is_blacklisted FROM users WHERE email = $1 AND is_blacklisted = true',
+      [email]
+    );
+    
+    if (blacklistCheck.rows.length > 0) {
+      return res.status(403).json({ 
+        error: 'This email address has been blacklisted and cannot register for a trust account' 
+      });
+    }
+
+    // Check if email already has a pending or approved request
     const existingRequest = await db.query(
-      'SELECT id FROM trust_registration_requests WHERE registration_email = $1',
+      'SELECT id, status FROM trust_registration_requests WHERE registration_email = $1',
       [email]
     );
     
     if (existingRequest.rows.length > 0) {
-      return res.status(409).json({ error: 'Registration email already used' });
+      const status = existingRequest.rows[0].status;
+      if (status === 'pending') {
+        return res.status(409).json({ 
+          error: 'A registration request with this email is already pending review. Please wait for admin approval.' 
+        });
+      } else if (status === 'approved') {
+        return res.status(409).json({ 
+          error: 'This email has already been approved for a trust account. Please try logging in instead.' 
+        });
+      }
+      // If status is 'rejected', allow them to reapply (will overwrite the old request)
     }
 
-    const requestId = uuidv4();
-    const sql = `INSERT INTO trust_registration_requests(
-      id, 
-      org_name, 
-      registration_email, 
-      contact_phone, 
-      contact_email, 
-      website, 
-      year_established, 
-      address, 
-      registration_number, 
-      status, 
-      submitted_at
-    ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending', now()) RETURNING *`;
-    
-    const { rows } = await db.query(sql, [
-      requestId,
-      orgName,
-      email,
-      contactPhone,
-      contactEmail || null,
-      website || null,
-      yearEstablished || null,
-      JSON.stringify(address || {}),
-      registrationNumber,
-    ]);
+    let requestId;
+    let rows;
+
+    if (existingRequest.rows.length > 0 && existingRequest.rows[0].status === 'rejected') {
+      // Update existing rejected request
+      requestId = existingRequest.rows[0].id;
+      const updateSql = `UPDATE trust_registration_requests SET
+        org_name = $1,
+        contact_phone = $2,
+        contact_email = $3,
+        website = $4,
+        year_established = $5,
+        address = $6,
+        registration_number = $7,
+        status = 'pending',
+        submitted_at = now(),
+        admin_notes = null,
+        reviewed_by = null,
+        reviewed_at = null
+      WHERE id = $8 RETURNING *`;
+      
+      const result = await db.query(updateSql, [
+        orgName,
+        contactPhone,
+        contactEmail || null,
+        website || null,
+        yearEstablished || null,
+        JSON.stringify(address || {}),
+        registrationNumber,
+        requestId
+      ]);
+      rows = result.rows;
+    } else {
+      // Create new request
+      requestId = uuidv4();
+      const insertSql = `INSERT INTO trust_registration_requests(
+        id, 
+        org_name, 
+        registration_email, 
+        contact_phone, 
+        contact_email, 
+        website, 
+        year_established, 
+        address, 
+        registration_number, 
+        status, 
+        submitted_at
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending', now()) RETURNING *`;
+      
+      const result = await db.query(insertSql, [
+        requestId,
+        orgName,
+        email,
+        contactPhone,
+        contactEmail || null,
+        website || null,
+        yearEstablished || null,
+        JSON.stringify(address || {}),
+        registrationNumber,
+      ]);
+      rows = result.rows;
+    }
 
     // TODO: When documents are uploaded, store them in the documents table
     // For now, return success response with placeholder for document handling
