@@ -59,8 +59,9 @@ const SignUpPage = () => {
   // Go back to step 1 (for Back button in Step 3)
   const backToStep1 = () => setStep(1);
 
-  // Handle text field changes
+  // Keep your existing handleChange signature (used by Step1 / Step2)
   const handleChange = (input) => (e) => {
+    if (!input) return;
     if (input.startsWith('address.')) {
       const addressField = input.split('.')[1];
       setFormData(prev => ({
@@ -80,13 +81,13 @@ const SignUpPage = () => {
         }
       }));
     } else {
-      setFormData({ ...formData, [input]: e.target.value });
+      setFormData(prev => ({ ...prev, [input]: e.target.value }));
     }
   };
 
   // Handle OTP change specifically
   const handleOtpChange = (otpValue) => {
-    setFormData({ ...formData, otp: otpValue });
+    setFormData(prev => ({ ...prev, otp: otpValue }));
   };
 
   // Handle step 1 submission
@@ -179,99 +180,99 @@ const SignUpPage = () => {
     }
   };
 
-  // Handle step 3 submission
-  const handleStep3Submit = async () => {
-    // Client-side validation
-    if (!formData.fullName) {
+  // NOTE: This now accepts data from the child step (Step3). If called without argument,
+  // it falls back to using parent formData (so it's backward-compatible).
+  const handleStep3Submit = async (childValues) => {
+    const v = childValues || formData;
+
+    // Client-side validation (same as before but using v)
+    if (!v.fullName) {
       toast.error('Full name is required!');
       return;
     }
 
-    if (!formData.contactNumber) {
+    if (!v.contactNumber) {
       toast.error('Contact number is required!');
       return;
     }
 
-    // Phone number validation
     const phoneRegex = /^[0-9]{10}$/;
-    if (!phoneRegex.test(formData.contactNumber)) {
+    if (!phoneRegex.test(v.contactNumber)) {
       toast.error('Please enter a valid 10-digit phone number!');
       return;
     }
 
-    if (!formData.dob) {
+    if (!v.dob) {
       toast.error('Date of birth is required!');
       return;
     }
 
-    // Age validation (must be at least 16)
     const today = new Date();
-    const birthDate = new Date(formData.dob);
+    const birthDate = new Date(v.dob);
     const age = today.getFullYear() - birthDate.getFullYear();
     if (age < 16) {
       toast.error('You must be at least 16 years old to register!');
       return;
     }
 
-    if (!formData.gender || formData.gender === 'Select') {
+    if (!v.gender || v.gender === 'Select') {
       toast.error('Please select your gender!');
       return;
     }
 
-    if (!formData.address.street) {
+    if (!v.address || !v.address.street) {
       toast.error('Street address is required!');
       return;
     }
 
-    if (!formData.address.city) {
+    if (!v.address.city) {
       toast.error('City is required!');
       return;
     }
 
-    if (!formData.address.state) {
+    if (!v.address.state) {
       toast.error('State is required!');
       return;
     }
 
-    if (!formData.address.zip) {
+    if (!v.address.zip) {
       toast.error('ZIP/Postal code is required!');
       return;
     }
 
-    if (!formData.kyc_doc_type || formData.kyc_doc_type === 'Select') {
+    if (!v.kyc_doc_type || v.kyc_doc_type === 'Select') {
       toast.error('Please select KYC document type!');
       return;
     }
 
     // Bank details validation
-    if (!formData.bank_details.account_number) {
+    if (!v.bank_details.account_number) {
       toast.error('Bank account number is required!');
       return;
     }
 
-    if (formData.bank_details.account_number.length < 9) {
+    if (v.bank_details.account_number.length < 9) {
       toast.error('Please enter a valid bank account number!');
       return;
     }
 
-    if (!formData.bank_details.bank_name) {
+    if (!v.bank_details.bank_name) {
       toast.error('Bank name is required!');
       return;
     }
 
-    if (!formData.bank_details.ifsc) {
+    if (!v.bank_details.ifsc) {
       toast.error('IFSC code is required!');
       return;
     }
 
-    // IFSC code validation
     const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-    if (!ifscRegex.test(formData.bank_details.ifsc)) {
+    if (!ifscRegex.test(v.bank_details.ifsc)) {
       toast.error('Please enter a valid IFSC code!');
       return;
     }
 
-    if (!formData.bank_details.branch) {
+    if (!v.bank_details.branch) {
       toast.error('Bank branch is required!');
       return;
     }
@@ -279,15 +280,15 @@ const SignUpPage = () => {
     setLoading(true);
     try {
       const profileData = {
-        full_name: formData.fullName,
-        phone_number: formData.contactNumber,
-        date_of_birth: formData.dob,
-        gender: formData.gender,
-        address: formData.address,
-        kyc_doc_type: formData.kyc_doc_type,
-        kyc_document: formData.kyc_document,
-        profile_picture: formData.profile_picture,
-        bank_details: formData.bank_details
+        full_name: v.fullName,
+        phone_number: v.contactNumber,
+        date_of_birth: v.dob,
+        gender: v.gender,
+        address: v.address,
+        kyc_doc_type: v.kyc_doc_type,
+        kyc_document: v.kyc_document,
+        profile_picture: v.profile_picture,
+        bank_details: v.bank_details
       };
 
       const result = await completeProfile(profileData);
@@ -301,7 +302,6 @@ const SignUpPage = () => {
             padding: '16px',
           },
         });
-        // Navigate to login page after a short delay to show the success message
         setTimeout(() => {
           navigate('/login');
         }, 2000);
@@ -336,6 +336,7 @@ const SignUpPage = () => {
             prevStep={prevStep}
             handleOtpChange={handleOtpChange}
             loading={loading}
+            email={formData.collegeEmail}
           />
         );
       case 3:
@@ -347,8 +348,6 @@ const SignUpPage = () => {
             values={formData}
             onSubmit={handleStep3Submit}
             loading={loading}
-            navigate={navigate}
-            onBackToStep1={backToStep1}
           />
         );
       default:
@@ -357,16 +356,47 @@ const SignUpPage = () => {
   };
 
   return (
-    <div className="bg-[#FAF9F6] min-h-screen font-sans">
-      <Header />
-      <main className="flex flex-col items-center justify-start py-12 px-4">
-        <h1 className="text-3xl font-bold mb-8 text-gray-700 tracking-wide">SIGN UP</h1>
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
+      <div className={`w-full ${step === 3 ? 'max-w-5xl' : 'max-w-md'}`}>
+        {/* Home Link */}
+        <div className="text-center mb-6">
+          <Link
+            to="/"
+            className="inline-flex items-center text-green-600 hover:text-green-700 text-sm font-medium"
+          >
+            ← Back to ScholarBridge Home
+          </Link>
+        </div>
+        
+        {/* Progress indicator */}
+        <div className="mb-8">
+          <div className="flex items-center justify-center space-x-4">
+            {[1, 2, 3].map((stepNum) => (
+              <div key={stepNum} className="flex items-center">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                  step >= stepNum ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {stepNum}
+                </div>
+                {stepNum < 3 && (
+                  <div className={`w-12 h-1 mx-2 ${
+                    step > stepNum ? 'bg-green-600' : 'bg-gray-200'
+                  }`}></div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between text-xs text-gray-600 mt-2 px-2">
+            <span>Account</span>
+            <span>Verify</span>
+            <span>Profile</span>
+          </div>
+        </div>
 
         <AnimatePresence mode="wait">
           {renderStep()}
         </AnimatePresence>
-        
-      </main>
+      </div>
     </div>
   );
 };

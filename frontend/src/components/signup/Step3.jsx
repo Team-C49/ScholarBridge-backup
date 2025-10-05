@@ -1,44 +1,183 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Upload, User, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { api } from '../../utils/api';
+import { 
+  User, 
+  Phone, 
+  Mail, 
+  Calendar, 
+  MapPin, 
+  CreditCard, 
+  FileText, 
+  Upload,
+  ArrowLeft, 
+  Check, 
+  AlertCircle,
+  Camera,
+  Building
+} from 'lucide-react';
 
-const stepVariants = {
-  hidden: { opacity: 0, x: 50 },
-  visible: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: -50 },
-};
+// --- HELPER COMPONENTS MOVED OUTSIDE ---
 
-const Step3 = ({ handleChange, values, onSubmit, loading, navigate, onBackToStep1 }) => {
-  console.log('Step3 rendering with:', { loading, hasOnSubmit: !!onSubmit, hasNavigate: !!navigate });
-  
-  const [uploadStatus, setUploadStatus] = useState({
-    kyc_document: { uploading: false, uploaded: false, error: null, url: null },
-    profile_picture: { uploading: false, uploaded: false, error: null, url: null }
-  });
+// Simple input field
+// By defining this component outside of Step3, it is not recreated on every render,
+// which prevents it from losing focus when the parent state changes.
+function InputField({ label, name, type, placeholder, icon, required, value, onChange }) {
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-gray-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="relative">
+        {icon && (
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            {React.createElement(icon, { className: "h-5 w-5 text-gray-400" })}
+          </div>
+        )}
+        <input
+          type={type || 'text'}
+          name={name}
+          value={value}
+          onChange={onChange(name)}
+          placeholder={placeholder}
+          required={required}
+          className={`block w-full ${icon ? 'pl-10' : 'pl-3'} pr-3 py-3 border border-gray-300 
+                     rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 
+                     text-gray-900`}
+        />
+      </div>
+    </div>
+  );
+}
 
-  const submitForm = (e) => {
-    e.preventDefault();
-    console.log('Submit button clicked!', { loading, hasOnSubmit: !!onSubmit, values });
-    if (onSubmit) {
-      onSubmit();
-    } else {
-      console.error('onSubmit function is not provided!');
-    }
+// Simple select field
+// This component is also moved outside to prevent re-creation on render.
+function SelectField({ label, name, options, icon, required, value, onChange }) {
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-gray-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="relative">
+        {icon && (
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            {React.createElement(icon, { className: "h-5 w-5 text-gray-400" })}
+          </div>
+        )}
+        <select
+          name={name}
+          value={value}
+          onChange={onChange(name)}
+          required={required}
+          className={`block w-full ${icon ? 'pl-10' : 'pl-3'} pr-3 py-3 border border-gray-300 
+                     rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 
+                     bg-white text-gray-900 appearance-none`}
+        >
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path>
+            </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Simple file upload field
+// Moved outside for the same reason as the other helper components.
+function FileUploadField({ label, name, accept, icon, required, onFileSelect, isUploaded, isUploading, currentFile }) {
+    return (
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        <div className="relative">
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50 transition-colors hover:border-green-500">
+            {isUploading ? (
+              <div className="flex flex-col items-center space-y-2">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+                <p className="text-sm text-gray-600">Uploading...</p>
+              </div>
+            ) : isUploaded ? (
+              <div className="flex flex-col items-center space-y-2">
+                <Check className="w-8 h-8 text-green-500" />
+                <p className="text-sm font-medium text-green-600">File uploaded successfully</p>
+                <p className="text-xs text-gray-500">{currentFile?.name}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center space-y-2">
+                {React.createElement(icon, { className: "w-8 h-8 text-gray-400" })}
+                <p className="text-sm font-medium text-gray-600">
+                  Click to upload file
+                </p>
+                <p className="text-xs text-gray-500">
+                  PNG, JPG, PDF up to 5MB
+                </p>
+              </div>
+            )}
+            
+            <input
+              type="file"
+              accept={accept}
+              onChange={(e) => {
+                const file = e.target.files[0];
+                if (file) onFileSelect(file, name);
+              }}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={isUploading}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+// --- MAIN COMPONENT ---
+
+// Step 3: Complete Profile Form
+const Step3 = ({ 
+  handleChange,     // Function to update form data in parent component
+  values,           // Current form data from parent component
+  onSubmit,         // Function to submit the form
+  loading,          // Whether form is being submitted
+  prevStep          // Function to go back to previous step
+}) => {
+  // State to track file upload status for UI feedback
+  const [kycUploaded, setKycUploaded] = useState(!!values.kyc_document?.uploaded);
+  const [profileUploaded, setProfileUploaded] = useState(!!values.profile_picture?.uploaded);
+  const [kycUploading, setKycUploading] = useState(false);
+  const [profileUploading, setProfileUploading] = useState(false);
+
+  // When user clicks submit button
+  const handleSubmit = (e) => {
+    e.preventDefault(); // Prevent page refresh
+    onSubmit(); // Call parent's submit function
   };
 
-  const uploadFile = async (file, fileType) => {
-    try {
-      setUploadStatus(prev => ({
-        ...prev,
-        [fileType]: { ...prev[fileType], uploading: true, error: null }
-      }));
+  // When user uploads a file - now with real R2 upload
+  const handleFileUpload = async (file, fileType) => {
+    if (!file) return; // Do nothing if no file selected
 
+    // Set uploading state
+    if (fileType === 'kyc_document') {
+      setKycUploading(true);
+    } else if (fileType === 'profile_picture') {
+      setProfileUploading(true);
+    }
+
+    try {
+      // Create form data for file upload
       const formData = new FormData();
       formData.append('file', file);
 
-      const endpoint = fileType === 'profile_picture' ? '/uploads/profile-picture' : '/uploads/kyc-document';
+      // Choose the right upload endpoint
+      const endpoint = fileType === 'kyc_document' ? '/uploads/kyc-document' : '/uploads/profile-picture';
       
+      // Upload file to R2 via backend
       const response = await api.post(endpoint, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -46,310 +185,295 @@ const Step3 = ({ handleChange, values, onSubmit, loading, navigate, onBackToStep
       });
 
       if (response.data.success) {
+        // Create file data with R2 information
         const fileData = {
           name: file.name,
           size: file.size,
           type: file.type,
-          url: response.data.file.url,
-          key: response.data.file.key,
+          url: response.data.file.url,      // R2 URL
+          key: response.data.file.key,      // R2 key for deletion
+          documentId: response.data.file.id, // Database ID
           uploaded: true
         };
 
-        // Update form data with file information including URL
-        handleChange({
-          target: {
-            name: fileType,
-            value: fileData
-          }
+        // Send file data to parent component
+        handleChange(fileType)({
+          target: { value: fileData }
         });
 
-        setUploadStatus(prev => ({
-          ...prev,
-          [fileType]: { 
-            uploading: false, 
-            uploaded: true, 
-            error: null, 
-            url: response.data.file.url 
-          }
-        }));
-
-        return response.data.file;
+        // Update local state to show success
+        if (fileType === 'kyc_document') {
+          setKycUploaded(true);
+          setKycUploading(false);
+        } else if (fileType === 'profile_picture') {
+          setProfileUploaded(true);
+          setProfileUploading(false);
+        }
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      const errorMessage = error.response?.data?.message || 'Upload failed';
+      console.error('File upload failed:', error);
       
-      setUploadStatus(prev => ({
-        ...prev,
-        [fileType]: { 
-          uploading: false, 
-          uploaded: false, 
-          error: errorMessage, 
-          url: null 
-        }
-      }));
-      
-      throw error;
-    }
-  };
-
-  const handleFileChange = async (field, e) => {
-    const file = e.target.files[0];
-    if (file) {
-      try {
-        await uploadFile(file, field);
-      } catch (error) {
-        console.error('File upload failed:', error);
+      // Reset uploading state
+      if (fileType === 'kyc_document') {
+        setKycUploading(false);
+      } else if (fileType === 'profile_picture') {
+        setProfileUploading(false);
       }
-    }
-  };
-
-  const handleBackToSignup = () => {
-    console.log('Back button clicked - going back to Step 1');
-    if (onBackToStep1) {
-      onBackToStep1();
-    } else {
-      // Fallback to browser back
-      window.history.back();
+      
+      // Show error to user (you might want to add toast notification)
+      alert('File upload failed. Please try again.');
     }
   };
 
   return (
-    <motion.div
-      variants={stepVariants}
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      transition={{ duration: 0.4, type: 'tween' }}
-      className="bg-white p-8 md:p-10 rounded-2xl shadow-lg w-full max-w-4xl"
-    >
-      <form onSubmit={submitForm}>
-        <h2 className="text-xl font-semibold mb-6 text-gray-800">Personal Information</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 mb-6">
-          <InputField label="Full Name" name="fullName" value={values.fullName} onChange={handleChange} />
-          <InputField label="Contact Number" name="contactNumber" type="tel" value={values.contactNumber} onChange={handleChange} />
-          <InputField label="Email Address" name="emailAddress" type="email" value={values.emailAddress} onChange={handleChange} />
-          <InputField label="Date of Birth" name="dob" type="date" value={values.dob} onChange={handleChange} />
-          <SelectField label="Gender" name="gender" value={values.gender} onChange={handleChange} options={['Select', 'Male', 'Female', 'Other']} />
-        </div>
-
-        <div className="space-y-5 mb-6">
-          <InputField label="Street Address" name="address.street" value={values.address.street} onChange={handleChange} />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-5">
-            <InputField label="City" name="address.city" value={values.address.city} onChange={handleChange} />
-            <InputField label="State" name="address.state" value={values.address.state} onChange={handleChange} />
-            <InputField label="ZIP/Postal Code" name="address.zip" value={values.address.zip} onChange={handleChange} />
-            <SelectField label="Country" name="address.country" value={values.address.country} onChange={handleChange} options={['Select', 'India', 'USA', 'Canada', 'UK']} />
+    <div className="w-full max-w-4xl mx-auto p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
+            <User className="w-8 h-8 text-purple-600" />
           </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your Profile</h2>
+          <p className="text-gray-600">Fill in your details to finish registration</p>
         </div>
 
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">KYC & Bank Details</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 mb-6">
-          <SelectField label="KYC Document Type" name="kyc_doc_type" value={values.kyc_doc_type} onChange={handleChange} options={['Select', 'aadhaar', 'pan']} />
-          <div></div>
-        </div>
-
-        {/* File Upload Section */}
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-4 text-gray-700">Document Upload</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* KYC Document Upload */}
-            <div>
-              <label className="block text-gray-700 text-sm mb-2">
-                Upload Document *
-              </label>
-              <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                uploadStatus.kyc_document.uploaded 
-                  ? 'border-green-500 bg-green-50' 
-                  : uploadStatus.kyc_document.error 
-                  ? 'border-red-500 bg-red-50' 
-                  : 'border-gray-300 hover:border-green-500'
-              }`}>
-                {uploadStatus.kyc_document.uploading ? (
-                  <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                ) : uploadStatus.kyc_document.uploaded ? (
-                  <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                ) : uploadStatus.kyc_document.error ? (
-                  <AlertCircle className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                ) : (
-                  <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                )}
-                
-                <p className="text-sm text-gray-600 mb-3">
-                  {uploadStatus.kyc_document.uploading 
-                    ? 'Uploading...' 
-                    : uploadStatus.kyc_document.uploaded
-                    ? 'Document uploaded successfully'
-                    : `Upload your ${values.kyc_doc_type === 'aadhaar' ? 'Aadhaar' : values.kyc_doc_type === 'pan' ? 'PAN' : 'KYC'} document`
-                  }
-                </p>
-                
-                {!uploadStatus.kyc_document.uploaded && (
-                  <>
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={(e) => handleFileChange('kyc_document', e)}
-                      className="hidden"
-                      id="kyc-upload"
-                      disabled={uploadStatus.kyc_document.uploading}
-                    />
-                    <label
-                      htmlFor="kyc-upload"
-                      className={`inline-flex items-center px-4 py-2 rounded-md transition-colors cursor-pointer ${
-                        uploadStatus.kyc_document.uploading
-                          ? 'bg-gray-400 text-white cursor-not-allowed'
-                          : 'bg-green-600 text-white hover:bg-green-700'
-                      }`}
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      {uploadStatus.kyc_document.uploading ? 'Uploading...' : 'Select File'}
-                    </label>
-                  </>
-                )}
-                
-                {uploadStatus.kyc_document.error && (
-                  <p className="text-xs text-red-600 mt-2">
-                    Error: {uploadStatus.kyc_document.error}
-                  </p>
-                )}
-                
-                {values.kyc_document && (
-                  <p className="text-xs text-green-600 mt-2">
-                    Selected: {values.kyc_document.name}
-                  </p>
-                )}
-              </div>
+        <form onSubmit={handleSubmit} className="space-y-10">
+          {/* Personal Information Section */}
+          <div className="space-y-6">
+            <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+              <User className="w-5 h-5 text-green-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Personal Information</h3>
             </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <InputField
+                label="Full Name"
+                name="fullName"
+                placeholder="Enter your full name"
+                icon={User}
+                required
+                value={values.fullName || ''}
+                onChange={handleChange}
+              />
+              <InputField
+                label="Contact Number"
+                name="contactNumber"
+                type="tel"
+                placeholder="Enter your phone number"
+                icon={Phone}
+                required
+                value={values.contactNumber || ''}
+                onChange={handleChange}
+              />
+              <InputField
+                label="Email Address"
+                name="emailAddress"
+                type="email"
+                placeholder="Enter your email"
+                icon={Mail}
+                required
+                value={values.emailAddress || ''}
+                onChange={handleChange}
+              />
+              <InputField
+                label="Date of Birth"
+                name="dob"
+                type="date"
+                icon={Calendar}
+                required
+                value={values.dob || ''}
+                onChange={handleChange}
+              />
+              <SelectField
+                label="Gender"
+                name="gender"
+                icon={User}
+                required
+                options={['Select Gender', 'Male', 'Female', 'Other']}
+                value={values.gender || 'Select Gender'}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
 
-            {/* Profile Picture Upload */}
-            <div>
-              <label className="block text-gray-700 text-sm mb-2">
-                Profile Picture *
-              </label>
-              <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                uploadStatus.profile_picture.uploaded 
-                  ? 'border-green-500 bg-green-50' 
-                  : uploadStatus.profile_picture.error 
-                  ? 'border-red-500 bg-red-50' 
-                  : 'border-gray-300 hover:border-green-500'
-              }`}>
-                {uploadStatus.profile_picture.uploading ? (
-                  <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                ) : uploadStatus.profile_picture.uploaded ? (
-                  <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                ) : uploadStatus.profile_picture.error ? (
-                  <AlertCircle className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                ) : (
-                  <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                )}
-                
-                <p className="text-sm text-gray-600 mb-3">
-                  {uploadStatus.profile_picture.uploading 
-                    ? 'Uploading...' 
-                    : uploadStatus.profile_picture.uploaded
-                    ? 'Profile picture uploaded successfully'
-                    : 'Upload your profile picture'
-                  }
-                </p>
-                
-                {!uploadStatus.profile_picture.uploaded && (
-                  <>
-                    <input
-                      type="file"
-                      accept=".jpg,.jpeg,.png"
-                      onChange={(e) => handleFileChange('profile_picture', e)}
-                      className="hidden"
-                      id="profile-upload"
-                      disabled={uploadStatus.profile_picture.uploading}
-                    />
-                    <label
-                      htmlFor="profile-upload"
-                      className={`inline-flex items-center px-4 py-2 rounded-md transition-colors cursor-pointer ${
-                        uploadStatus.profile_picture.uploading
-                          ? 'bg-gray-400 text-white cursor-not-allowed'
-                          : 'bg-green-600 text-white hover:bg-green-700'
-                      }`}
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      {uploadStatus.profile_picture.uploading ? 'Uploading...' : 'Select File'}
-                    </label>
-                  </>
-                )}
-                
-                {uploadStatus.profile_picture.error && (
-                  <p className="text-xs text-red-600 mt-2">
-                    Error: {uploadStatus.profile_picture.error}
-                  </p>
-                )}
-                
-                {values.profile_picture && (
-                  <p className="text-xs text-green-600 mt-2">
-                    Selected: {values.profile_picture.name}
-                  </p>
-                )}
+          {/* Address Section */}
+          <div className="space-y-6">
+            <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+              <MapPin className="w-5 h-5 text-green-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Address Information</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="md:col-span-2">
+                <InputField
+                  label="Street Address"
+                  name="address.street"
+                  placeholder="Enter your street address"
+                  icon={MapPin}
+                  required
+                  value={values.address?.street || ''}
+                  onChange={handleChange}
+                />
+              </div>
+              <InputField
+                label="City"
+                name="address.city"
+                placeholder="Enter your city"
+                required
+                value={values.address?.city || ''}
+                onChange={handleChange}
+              />
+              <InputField
+                label="State"
+                name="address.state"
+                placeholder="Enter your state"
+                required
+                value={values.address?.state || ''}
+                onChange={handleChange}
+              />
+              <InputField
+                label="ZIP Code"
+                name="address.zip"
+                placeholder="Enter ZIP code"
+                required
+                value={values.address?.zip || ''}
+                onChange={handleChange}
+              />
+              <SelectField
+                label="Country"
+                name="address.country"
+                options={['India', 'USA', 'UK', 'Canada', 'Australia']}
+                required
+                value={values.address?.country || 'India'}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
+
+          {/* KYC Documents Section */}
+          <div className="space-y-6">
+            <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+              <FileText className="w-5 h-5 text-green-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Identity Verification</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              <SelectField
+                label="KYC Document Type"
+                name="kyc_doc_type"
+                options={['Aadhaar Card', 'PAN Card', 'Passport', 'Driving License']}
+                icon={FileText}
+                required
+                value={values.kyc_doc_type || 'Aadhaar Card'}
+                onChange={handleChange}
+              />
+              <FileUploadField
+                label="Upload KYC Document"
+                name="kyc_document"
+                accept=".pdf,.jpg,.jpeg,.png"
+                icon={Upload}
+                required
+                onFileSelect={handleFileUpload}
+                isUploaded={kycUploaded}
+                isUploading={kycUploading}
+                currentFile={values.kyc_document}
+              />
+              <div className="md:col-span-2">
+                <FileUploadField
+                  label="Profile Picture"
+                  name="profile_picture"
+                  accept=".jpg,.jpeg,.png"
+                  icon={Camera}
+                  onFileSelect={handleFileUpload}
+                  isUploaded={profileUploaded}
+                  isUploading={profileUploading}
+                  currentFile={values.profile_picture}
+                />
               </div>
             </div>
           </div>
-        </div>
 
-        <h3 className="text-lg font-semibold mb-4 text-gray-700">Bank Details</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 mb-6">
-          <InputField label="Account Number" name="bank_details.account_number" value={values.bank_details.account_number} onChange={handleChange} />
-          <InputField label="Bank Name" name="bank_details.bank_name" value={values.bank_details.bank_name} onChange={handleChange} />
-          <InputField label="IFSC Code" name="bank_details.ifsc" value={values.bank_details.ifsc} onChange={handleChange} />
-          <InputField label="Branch" name="bank_details.branch" value={values.bank_details.branch} onChange={handleChange} />
-        </div>
+          {/* Bank Details Section */}
+          <div className="space-y-6">
+            <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+              <CreditCard className="w-5 h-5 text-green-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Bank Details</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <InputField
+                label="Account Number"
+                name="bank_details.account_number"
+                placeholder="Enter account number"
+                icon={CreditCard}
+                required
+                value={values.bank_details?.account_number || ''}
+                onChange={handleChange}
+              />
+              <InputField
+                label="Bank Name"
+                name="bank_details.bank_name"
+                placeholder="Enter bank name"
+                icon={Building}
+                required
+                value={values.bank_details?.bank_name || ''}
+                onChange={handleChange}
+              />
+              <InputField
+                label="IFSC Code"
+                name="bank_details.ifsc"
+                placeholder="Enter IFSC code"
+                required
+                value={values.bank_details?.ifsc || ''}
+                onChange={handleChange}
+              />
+              <InputField
+                label="Branch Name"
+                name="bank_details.branch"
+                placeholder="Enter branch name"
+                required
+                value={values.bank_details?.branch || ''}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
 
-        <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-200 bg-gray-50 p-4 rounded-lg">
-          <button 
-            type="button"
-            onClick={handleBackToSignup}
-            className="bg-gray-500 text-white font-bold py-3 px-8 rounded-md hover:bg-gray-600 transition-colors shadow-md min-w-[120px]"
-          >
-            Back
-          </button>
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="bg-green-600 text-white font-bold py-3 px-12 rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors shadow-md min-w-[140px]"
-          >
-            {loading ? 'Submitting...' : 'Sign Up'}
-          </button>
-        </div>
-      </form>
-    </motion.div>
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 pt-6 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={prevStep}
+              className="flex-1 flex items-center justify-center px-6 py-3 border border-gray-300 
+                         rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 
+                         focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 
+                         transition-colors duration-200"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </button>
+            
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 flex items-center justify-center px-6 py-3 border border-transparent 
+                         rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 
+                         focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+            >
+              {loading ? (
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Creating Profile...
+                </div>
+              ) : (
+                'Complete Registration'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 };
-
-// Helper components to keep the form clean
-const InputField = ({ label, name, type = 'text', value, onChange }) => (
-  <div>
-    <label className="block text-gray-700 text-sm mb-1">{label}</label>
-    <input
-      type={type}
-      name={name}
-      value={value}
-      onChange={onChange(name)}
-      required
-      className="w-full bg-gray-200 p-3 rounded-md focus:outline-none focus:ring-2 focus:ring-custom-dark-green"
-    />
-  </div>
-);
-
-const SelectField = ({ label, name, value, onChange, options }) => (
-  <div>
-    <label className="block text-gray-700 text-sm mb-1">{label}</label>
-    <select
-      name={name}
-      value={value}
-      onChange={onChange(name)}
-      required
-      className="w-full bg-gray-200 p-3 rounded-md focus:outline-none focus:ring-2 focus:ring-custom-dark-green appearance-none"
-    >
-      {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-    </select>
-  </div>
-);
 
 export default Step3;

@@ -294,11 +294,11 @@ const TrustRegistrationPage = () => {
         {/* Back Button */}
         <div className="mb-6">
           <Link
-            to="/signup"
+            to="/"
             className="inline-flex items-center text-green-600 hover:text-green-700 font-medium"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Sign Up
+            Back to Homepage
           </Link>
         </div>
 
