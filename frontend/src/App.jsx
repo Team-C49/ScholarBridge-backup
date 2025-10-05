@@ -9,6 +9,7 @@ import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
 import TrustRegistrationPage from './pages/TrustRegistrationPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 
 // Layouts
 import StudentLayout from './components/layouts/StudentLayout';
@@ -50,6 +51,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/trust-registration" element={<TrustRegistrationPage />} />
             
             {/* Protected Routes - Student */}

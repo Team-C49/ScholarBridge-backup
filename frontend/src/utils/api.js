@@ -37,6 +37,43 @@ api.interceptors.response.use(
   }
 );
 
+// Forgot Password API functions
+api.forgotPassword = {
+  // Send OTP to email for password reset
+  sendOTP: async (email) => {
+    try {
+      const response = await api.post('/auth/forgot-password', { email });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to send OTP' };
+    }
+  },
+
+  // Verify OTP for password reset
+  verifyOTP: async (email, otp) => {
+    try {
+      const response = await api.post('/auth/verify-reset-otp', { email, otp });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Invalid OTP' };
+    }
+  },
+
+  // Reset password with OTP
+  resetPassword: async (email, otp, newPassword) => {
+    try {
+      const response = await api.post('/auth/reset-password', { 
+        email, 
+        otp, 
+        new_password: newPassword 
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to reset password' };
+    }
+  }
+};
+
 // Trust registration API functions
 export const trustApi = {
   // Submit trust registration request

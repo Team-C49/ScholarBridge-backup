@@ -246,6 +246,27 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
+// Verify OTP for password reset (separate from actual password change)
+router.post('/verify-reset-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) return res.status(400).json({ error: 'email and otp required' });
+    
+    const norm = email.trim().toLowerCase();
+    const q = `SELECT * FROM otps WHERE user_email=$1 AND otp_code=$2 ORDER BY created_at DESC LIMIT 1`;
+    const { rows } = await db.query(q, [norm, otp]);
+    
+    if (!rows.length) return res.status(400).json({ error: 'Invalid OTP' });
+    const rec = rows[0];
+    if (new Date(rec.expires_at) < new Date()) return res.status(400).json({ error: 'OTP expired' });
+    
+    return res.json({ message: 'OTP verified successfully', valid: true });
+  } catch (err) {
+    console.error('verify-reset-otp error', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.post('/reset-password', async (req, res) => {
   try {
     const { email, otp, new_password } = req.body;
@@ -256,6 +277,10 @@ router.post('/reset-password', async (req, res) => {
     if (!rows.length) return res.status(400).json({ error: 'Invalid OTP' });
     const rec = rows[0];
     if (new Date(rec.expires_at) < new Date()) return res.status(400).json({ error: 'OTP expired' });
+
+    // Check if user exists
+    const { rows: userRows } = await db.query(`SELECT id FROM users WHERE LOWER(email)=$1`, [norm]);
+    if (!userRows.length) return res.status(400).json({ error: 'User not found' });
 
     await db.query(`DELETE FROM otps WHERE user_email=$1`, [norm]);
     const hash = await hashPassword(new_password);
