@@ -72,6 +72,8 @@ const AdminDashboard = () => {
   const [actionReason, setActionReason] = useState('');
   const [showTrustToggleModal, setShowTrustToggleModal] = useState(false);
   const [selectedTrust, setSelectedTrust] = useState(null);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [showStudentDetailsModal, setShowStudentDetailsModal] = useState(false);
   
   // Analytics state
   const [analytics, setAnalytics] = useState({
@@ -151,6 +153,17 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Error fetching request details:', error);
       toast.error('Failed to load request details');
+    }
+  };
+
+  const handleViewStudentDetails = async (studentId) => {
+    try {
+      const response = await adminApi.getStudent(studentId);
+      setSelectedStudent(response.student);
+      setShowStudentDetailsModal(true);
+    } catch (error) {
+      console.error('Error fetching student details:', error);
+      toast.error('Failed to load student details');
     }
   };
 
@@ -759,14 +772,11 @@ const AdminDashboard = () => {
                             </div>
                             <div className="flex items-center space-x-2">
                               <button
-                                onClick={() => {
-                                  setSelectedUser(student);
-                                  setShowDetailsModal(true);
-                                }}
+                                onClick={() => handleViewStudentDetails(student.id)}
                                 className="flex items-center space-x-1 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg"
                               >
                                 <Eye className="w-4 h-4" />
-                                <span>View</span>
+                                <span>View Details</span>
                               </button>
                               {!student.is_blacklisted ? (
                                 <button
@@ -1257,6 +1267,137 @@ const AdminDashboard = () => {
                 >
                   {actionLoading ? 'Processing...' : (selectedTrust.is_active ? 'Deactivate' : 'Activate')}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Details Modal */}
+      {showStudentDetailsModal && selectedStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">Student Details</h3>
+                <button
+                  onClick={() => setShowStudentDetailsModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">{selectedStudent.full_name || 'Name not provided'}</h4>
+                  {selectedStudent.is_blacklisted ? (
+                    <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Blacklisted</span>
+                  ) : (
+                    <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Active</span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <p className="mt-1 text-sm text-gray-900">{selectedStudent.email}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+                    <p className="mt-1 text-sm text-gray-900">{selectedStudent.phone_number || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Date of Birth</label>
+                    <p className="mt-1 text-sm text-gray-900">{selectedStudent.date_of_birth ? formatDate(selectedStudent.date_of_birth) : 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Gender</label>
+                    <p className="mt-1 text-sm text-gray-900">{selectedStudent.gender || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">KYC Document Type</label>
+                    <p className="mt-1 text-sm text-gray-900">{selectedStudent.kyc_doc_type || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Account Status</label>
+                    <p className="mt-1 text-sm text-gray-900">{selectedStudent.is_blacklisted ? 'Blacklisted' : 'Active'}</p>
+                  </div>
+                </div>
+
+                {selectedStudent.address && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Address</label>
+                    <p className="mt-1 text-sm text-gray-900">
+                      {typeof selectedStudent.address === 'object' 
+                        ? Object.values(selectedStudent.address).filter(Boolean).join(', ')
+                        : selectedStudent.address || 'Not provided'
+                      }
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Registered At</label>
+                  <p className="mt-1 text-sm text-gray-900">{formatDate(selectedStudent.created_at)}</p>
+                </div>
+
+                {/* Uploaded Documents Section */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Uploaded Documents</label>
+                  {selectedStudent.documents && selectedStudent.documents.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedStudent.documents.map((doc) => (
+                        <div key={doc.id} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <FileText className="w-5 h-5 text-blue-500" />
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  {doc.doc_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {doc.original_name} • {doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : 'Unknown size'} • {formatDate(doc.created_at)}
+                                </p>
+                                {doc.description && (
+                                  <p className="text-sm text-gray-600 mt-1">{doc.description}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => window.open(doc.file_url, '_blank')}
+                                className="flex items-center space-x-1 px-3 py-1 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md"
+                              >
+                                <Eye className="w-4 h-4" />
+                                <span>View</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const link = document.createElement('a');
+                                  link.href = doc.file_url;
+                                  link.download = doc.original_name || 'document';
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                }}
+                                className="flex items-center space-x-1 px-3 py-1 text-sm text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md"
+                              >
+                                <Download className="w-4 h-4" />
+                                <span>Download</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                      <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">No documents uploaded yet</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

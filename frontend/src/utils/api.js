@@ -218,6 +218,16 @@ export const adminApi = {
     }
   },
 
+  // Get single student details
+  getStudent: async (studentId) => {
+    try {
+      const response = await api.get(`/admin/students/${studentId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch student details' };
+    }
+  },
+
   // Analytics methods
   getAnalytics: async () => {
     try {

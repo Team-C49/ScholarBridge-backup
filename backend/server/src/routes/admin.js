@@ -338,6 +338,44 @@ router.get('/trusts', async (req, res) => {
   }
 });
 
+// Get single student details with documents
+router.get('/students/:id', async (req, res) => {
+  try {
+    const studentId = req.params.id;
+    
+    // Get student details
+    const { rows } = await db.query(`
+      SELECT u.id, u.email, u.is_blacklisted, u.created_at,
+             sp.full_name, sp.phone_number, sp.date_of_birth, sp.gender,
+             sp.address, sp.profile_picture_url, sp.kyc_doc_type,
+             sp.bank_details_masked, sp.created_at as profile_created_at
+      FROM users u 
+      LEFT JOIN student_profiles sp ON u.id = sp.user_id 
+      WHERE u.id = $1 AND u.role = 'student'
+    `, [studentId]);
+    
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    
+    // Get associated documents
+    const documentsRes = await db.query(`
+      SELECT id, doc_type, original_name, file_url, description, created_at, file_size, content_type
+      FROM documents 
+      WHERE owner_id = $1 AND owner_type = 'student' AND is_deleted = false
+      ORDER BY created_at DESC
+    `, [studentId]);
+    
+    const student = rows[0];
+    student.documents = documentsRes.rows || [];
+    
+    return res.json({ student });
+  } catch (err) {
+    console.error('admin get student details error', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Get all applications with detailed information
 router.get('/applications', async (req, res) => {
   try {
@@ -481,23 +519,53 @@ router.post('/users/:id/blacklist', async (req, res) => {
     
     if (!reason) return res.status(400).json({ error: 'Reason is required' });
     
-    // Check if user exists
-    const { rows: userRows } = await db.query(`SELECT role FROM users WHERE id = $1`, [userId]);
+    // Get user details for email
+    const { rows: userRows } = await db.query(`
+      SELECT u.role, u.email, 
+             CASE 
+               WHEN u.role = 'student' THEN sp.full_name
+               WHEN u.role = 'trust' THEN t.org_name
+               ELSE u.email
+             END as display_name
+      FROM users u
+      LEFT JOIN student_profiles sp ON u.id = sp.user_id
+      LEFT JOIN trusts t ON u.id = t.user_id
+      WHERE u.id = $1
+    `, [userId]);
+    
     if (!userRows.length) return res.status(404).json({ error: 'User not found' });
+    
+    const user = userRows[0];
     
     await db.query(`UPDATE users SET is_blacklisted = true, updated_at = NOW() WHERE id = $1`, [userId]);
     
     // If it's a trust user, deactivate the trust record
-    if (userRows[0].role === 'trust') {
+    if (user.role === 'trust') {
       await db.query(`UPDATE trusts SET is_active = false, updated_at = NOW() WHERE user_id = $1`, [userId]);
     }
+
+    // Send email notification
+    await sendMail({
+      to: user.email,
+      subject: `${process.env.APP_NAME || 'ScholarBridge'} - Account Suspended`,
+      text: `Dear ${user.display_name || 'User'},
+
+Your account has been suspended and blacklisted.
+
+Reason: ${reason}
+
+Your account access has been restricted. If you believe this is an error or would like to appeal this decision, please contact our support team.
+
+Best regards,
+ScholarBridge Team`,
+    }).catch((e) => console.warn('sendMail failed (non-fatal):', e.message));
 
     await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'blacklist_user',$2)`, [
       adminId, 
       JSON.stringify({ target_user_id: userId, reason })
     ]);
     
-    return res.json({ message: 'User blacklisted successfully' });
+    return res.json({ message: 'User blacklisted successfully and notification sent' });
   } catch (err) {
     console.error('admin blacklist user error', err);
     return res.status(500).json({ error: 'Server error' });
@@ -513,14 +581,48 @@ router.post('/users/:id/unblacklist', async (req, res) => {
     
     if (!reason) return res.status(400).json({ error: 'Reason is required' });
     
+    // Get user details for email
+    const { rows: userRows } = await db.query(`
+      SELECT u.role, u.email, 
+             CASE 
+               WHEN u.role = 'student' THEN sp.full_name
+               WHEN u.role = 'trust' THEN t.org_name
+               ELSE u.email
+             END as display_name
+      FROM users u
+      LEFT JOIN student_profiles sp ON u.id = sp.user_id
+      LEFT JOIN trusts t ON u.id = t.user_id
+      WHERE u.id = $1
+    `, [userId]);
+    
+    if (!userRows.length) return res.status(404).json({ error: 'User not found' });
+    
+    const user = userRows[0];
+    
     await db.query(`UPDATE users SET is_blacklisted = false, updated_at = NOW() WHERE id = $1`, [userId]);
+    
+    // Send email notification
+    await sendMail({
+      to: user.email,
+      subject: `${process.env.APP_NAME || 'ScholarBridge'} - Account Restored`,
+      text: `Dear ${user.display_name || 'User'},
+
+Good news! Your account has been restored and is no longer blacklisted.
+
+Reason: ${reason}
+
+You can now access your account and use all features. Thank you for your patience.
+
+Best regards,
+ScholarBridge Team`,
+    }).catch((e) => console.warn('sendMail failed (non-fatal):', e.message));
     
     await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'unblacklist_user',$2)`, [
       adminId, 
       JSON.stringify({ target_user_id: userId, reason })
     ]);
     
-    return res.json({ message: 'User unblacklisted successfully' });
+    return res.json({ message: 'User unblacklisted successfully and notification sent' });
   } catch (err) {
     console.error('admin unblacklist user error', err);
     return res.status(500).json({ error: 'Server error' });
