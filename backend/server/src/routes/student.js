@@ -11,7 +11,15 @@ router.use(authMiddleware, requireRole('student'));
 router.get('/profile', async (req, res) => {
   try {
     const userId = req.user.id;
-    const { rows } = await db.query(`SELECT * FROM student_profiles WHERE user_id=$1`, [userId]);
+    
+    // Get user info (email) and profile info in a single query
+    const { rows } = await db.query(`
+      SELECT sp.*, u.email 
+      FROM student_profiles sp 
+      LEFT JOIN users u ON sp.user_id = u.id 
+      WHERE sp.user_id = $1
+    `, [userId]);
+    
     const profile = rows[0] || null;
     
     // Get associated documents
@@ -120,16 +128,48 @@ router.get('/applications/:id', async (req, res) => {
   try {
     const userId = req.user.id;
     const appId = req.params.id;
+    
+    // Get application details
     const app = (await db.query(`SELECT * FROM applications WHERE id=$1 AND student_user_id=$2`, [appId, userId])).rows[0];
     if (!app) return res.status(404).json({ error: 'Application not found' });
 
-    const education = (await db.query(`SELECT * FROM education_history WHERE application_id=$1`, [appId])).rows;
-    const family = (await db.query(`SELECT * FROM family_members WHERE application_id=$1`, [appId])).rows;
-    const expenses = (await db.query(`SELECT * FROM current_expenses WHERE application_id=$1`, [appId])).rows;
-    const docs = (await db.query(`SELECT * FROM documents WHERE owner_type='application' AND owner_id=$1`, [appId])).rows;
-    const approvals = (await db.query(`SELECT aa.*, u.email as trust_email FROM application_approvals aa LEFT JOIN users u ON u.id = aa.trust_user_id WHERE aa.application_id=$1`, [appId])).rows;
+    // Get student profile with email
+    const profile = (await db.query(`
+      SELECT sp.*, u.email 
+      FROM student_profiles sp 
+      LEFT JOIN users u ON sp.user_id = u.id 
+      WHERE sp.user_id = $1
+    `, [userId])).rows[0];
 
-    return res.json({ application: app, education, family, expenses, docs, approvals });
+    // Get related data
+    const educationHistory = (await db.query(`SELECT * FROM education_history WHERE application_id=$1 ORDER BY year_of_passing DESC`, [appId])).rows;
+    const familyMembers = (await db.query(`SELECT * FROM family_members WHERE application_id=$1`, [appId])).rows;
+    const currentExpenses = (await db.query(`SELECT * FROM current_expenses WHERE application_id=$1`, [appId])).rows;
+    
+    // Get documents
+    const documents = (await db.query(`
+      SELECT id, doc_type, file_url, description, original_name, created_at 
+      FROM documents 
+      WHERE owner_type='application' AND owner_id=$1
+    `, [appId])).rows;
+    
+    // Get trust payments
+    const trustPayments = (await db.query(`
+      SELECT tp.*, tp.trust_name, tp.amount, tp.payment_date, tp.reference_number, tp.remarks
+      FROM trust_payments tp 
+      WHERE tp.application_id=$1
+      ORDER BY tp.payment_date DESC
+    `, [appId])).rows;
+
+    return res.json({ 
+      application: app, 
+      profile,
+      educationHistory, 
+      familyMembers, 
+      currentExpenses, 
+      documents, 
+      trustPayments
+    });
   } catch (err) {
     console.error('get application error', err);
     return res.status(500).json({ error: 'Server error' });
@@ -307,6 +347,62 @@ router.get('/applications/:id/documents', async (req, res) => {
     console.error('Get application documents error:', error);
     res.status(500).json({ 
       error: 'Failed to retrieve application documents',
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Download application as PDF
+ * GET /api/student/applications/:id/pdf
+ */
+router.get('/applications/:id/pdf', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const appId = req.params.id;
+    
+    // Verify application belongs to user
+    const app = (await db.query(`SELECT * FROM applications WHERE id=$1 AND student_user_id=$2`, [appId, userId])).rows[0];
+    if (!app) return res.status(404).json({ error: 'Application not found' });
+
+    // For now, return a simple message - PDF generation will be implemented later
+    res.status(501).json({ 
+      error: 'PDF generation not yet implemented',
+      message: 'This feature will be available soon'
+    });
+    
+  } catch (error) {
+    console.error('Download PDF error:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate PDF',
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Download application documents as ZIP
+ * GET /api/student/applications/:id/documents/zip
+ */
+router.get('/applications/:id/documents/zip', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const appId = req.params.id;
+    
+    // Verify application belongs to user
+    const app = (await db.query(`SELECT * FROM applications WHERE id=$1 AND student_user_id=$2`, [appId, userId])).rows[0];
+    if (!app) return res.status(404).json({ error: 'Application not found' });
+
+    // For now, return a simple message - ZIP generation will be implemented later
+    res.status(501).json({ 
+      error: 'ZIP generation not yet implemented',
+      message: 'This feature will be available soon'
+    });
+    
+  } catch (error) {
+    console.error('Download ZIP error:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate ZIP',
       message: error.message 
     });
   }

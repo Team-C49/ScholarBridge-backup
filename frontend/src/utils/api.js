@@ -294,4 +294,113 @@ export const adminApi = {
   }
 };
 
+// Student API functions
+export const studentApi = {
+  // Get student applications
+  getApplications: async () => {
+    try {
+      const response = await api.get('/student/applications');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch applications' };
+    }
+  },
+
+  // Get student profile
+  getProfile: async () => {
+    try {
+      const response = await api.get('/student/profile');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch profile' };
+    }
+  },
+
+  // Create new application
+  createApplication: async (applicationData) => {
+    try {
+      const response = await api.post('/student/applications', applicationData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to create application' };
+    }
+  },
+
+  // Upload application document
+  uploadApplicationDocument: async (applicationId, docType, file) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('applicationId', applicationId);
+      formData.append('docType', docType);
+
+      const response = await api.post('/uploads/application-document', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to upload document' };
+    }
+  },
+
+  // Get application details
+  getApplicationDetails: async (applicationId) => {
+    try {
+      const response = await api.get(`/student/applications/${applicationId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch application details' };
+    }
+  },
+
+  // Download application as PDF
+  downloadApplicationPDF: async (applicationId) => {
+    try {
+      const response = await api.get(`/student/applications/${applicationId}/pdf`, {
+        responseType: 'blob',
+      });
+
+      // Create blob link to download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `application-${applicationId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true };
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to download PDF' };
+    }
+  },
+
+  // Download application documents as ZIP
+  downloadApplicationZip: async (applicationId) => {
+    try {
+      const response = await api.get(`/student/applications/${applicationId}/documents/zip`, {
+        responseType: 'blob',
+      });
+
+      // Create blob link to download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `application-${applicationId}-documents.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true };
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to download documents' };
+    }
+  }
+};
+
 export { api };

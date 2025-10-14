@@ -435,6 +435,71 @@ router.get('/document-types', (req, res) => {
   }
 });
 
+/**
+ * Upload document for application
+ * POST /api/uploads/application-document
+ * Body: { docType, applicationId }
+ */
+router.post('/application-document', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { docType, applicationId } = req.body;
+
+    if (!docType || !applicationId) {
+      return res.status(400).json({ 
+        error: 'docType and applicationId are required' 
+      });
+    }
+
+    // Verify the application belongs to the user (security check)
+    const { rows: applicationRows } = await db.query(
+      'SELECT student_user_id FROM applications WHERE id = $1',
+      [applicationId]
+    );
+
+    if (!applicationRows.length) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    if (applicationRows[0].student_user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Upload document using document service
+    const document = await documentService.uploadApplicationDocument(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype,
+      docType,
+      applicationId,
+      req.user.id
+    );
+
+    res.json({
+      success: true,
+      message: 'Document uploaded successfully',
+      document: {
+        id: document.id,
+        docType: document.doc_type,
+        url: document.file_url,
+        originalName: document.original_name,
+        description: document.description,
+        createdAt: document.created_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Application document upload error:', error);
+    res.status(500).json({ 
+      error: 'Failed to upload document',
+      message: error.message 
+    });
+  }
+});
+
 // Error handling middleware for multer
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {

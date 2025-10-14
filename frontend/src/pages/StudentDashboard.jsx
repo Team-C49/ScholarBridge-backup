@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
-import { GraduationCap, User, FileText, DollarSign, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { GraduationCap, User, FileText, DollarSign, Clock, CheckCircle, AlertCircle, Plus } from 'lucide-react';
+import { api } from '../utils/api';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -30,8 +32,10 @@ ChartJS.register(
 
 const StudentDashboard = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [canCreateApplication, setCanCreateApplication] = useState(true);
 
   useEffect(() => {
     // Fetch student applications
@@ -40,31 +44,28 @@ const StudentDashboard = () => {
 
   const fetchApplications = async () => {
     try {
-      // This would be an API call to fetch student applications
-      // For now, using mock data with zeros as requested
-      setApplications([
-        {
-          id: 1,
-          academic_year: 2024,
-          status: 'submitted',
-          total_amount_requested: 0,
-          total_amount_approved: 0,
-          created_at: '2024-01-15'
-        },
-        {
-          id: 2,
-          academic_year: 2023,
-          status: 'approved',
-          total_amount_requested: 0,
-          total_amount_approved: 0,
-          created_at: '2023-01-15'
-        }
-      ]);
+      const response = await api.get('/student/applications');
+      const fetchedApplications = response.data.applications || [];
+      setApplications(fetchedApplications);
+      
+      // Check if student can create a new application (one per year)
+      const currentYear = new Date().getFullYear();
+      const hasCurrentYearApplication = fetchedApplications.some(
+        app => app.academic_year === currentYear
+      );
+      setCanCreateApplication(!hasCurrentYearApplication);
+      
     } catch (error) {
       console.error('Error fetching applications:', error);
+      // Fallback to empty array
+      setApplications([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCreateApplication = () => {
+    navigate('/student/application/new');
   };
 
   const getStatusColor = (status) => {
@@ -193,6 +194,88 @@ const StudentDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
+        {/* Quick Actions Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mb-8"
+        >
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Create Application Card */}
+              <div className={`p-6 border-2 border-dashed rounded-lg transition-colors ${
+                canCreateApplication 
+                  ? 'border-green-300 bg-green-50 hover:border-green-400 cursor-pointer' 
+                  : 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
+              }`}>
+                {canCreateApplication ? (
+                  <div onClick={handleCreateApplication} className="text-center">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Plus className="w-6 h-6 text-green-600" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Create New Application</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Submit your scholarship application for the current academic year
+                    </p>
+                    <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                      Start Application
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <FileText className="w-6 h-6 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Application Submitted</h3>
+                    <p className="text-sm text-gray-600">
+                      You have already submitted an application for the current academic year ({new Date().getFullYear()})
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* View Applications Card */}
+              <div 
+                onClick={() => navigate('/student/applications')}
+                className="p-6 border-2 border-dashed border-purple-300 bg-purple-50 hover:border-purple-400 cursor-pointer transition-colors rounded-lg"
+              >
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <FileText className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">View Applications</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    View and manage all your submitted applications
+                  </p>
+                  <button className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+                    View All
+                  </button>
+                </div>
+              </div>
+
+              {/* View Profile Card */}
+              <div 
+                onClick={() => navigate('/student/profile')}
+                className="p-6 border-2 border-dashed border-blue-300 bg-blue-50 hover:border-blue-400 cursor-pointer transition-colors rounded-lg"
+              >
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <User className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Update Profile</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Manage your personal information and documents
+                  </p>
+                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                    View Profile
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

@@ -83,6 +83,42 @@ class DocumentService {
         maxSize: 10 * 1024 * 1024,
         description: 'Expense Proof Document'
       },
+
+      // Application-specific documents (organized by application ID)
+      'application_marksheet': {
+        folder: 'student-applications', // Will be extended with /{applicationId}/marksheets
+        allowedTypes: [
+          'application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ],
+        maxSize: 10 * 1024 * 1024,
+        description: 'Academic Marksheet for Application'
+      },
+      'application_income_proof': {
+        folder: 'student-applications', // Will be extended with /{applicationId}/income-proofs
+        allowedTypes: [
+          'application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ],
+        maxSize: 10 * 1024 * 1024,
+        description: 'Income Proof for Application'
+      },
+      'application_expense_proof': {
+        folder: 'student-applications', // Will be extended with /{applicationId}/expense-proofs
+        allowedTypes: [
+          'application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ],
+        maxSize: 10 * 1024 * 1024,
+        description: 'Expense Proof for Application'
+      },
       'bank_statement': {
         folder: 'financial-documents/bank-statements',
         allowedTypes: [
@@ -234,6 +270,96 @@ class DocumentService {
 
     } catch (error) {
       console.error('Document upload error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload document for student application with specific folder structure
+   * @param {Buffer} fileBuffer - File buffer
+   * @param {string} originalName - Original file name
+   * @param {string} contentType - MIME type
+   * @param {string} docType - Document type (application_marksheet, application_income_proof, etc.)
+   * @param {string} applicationId - Application ID for folder organization
+   * @param {string} uploadedByUserId - ID of the user uploading
+   * @returns {Promise<Object>} Document record with metadata
+   */
+  async uploadApplicationDocument(fileBuffer, originalName, contentType, docType, applicationId, uploadedByUserId) {
+    try {
+      // Validate document type
+      if (!this.documentTypes[docType]) {
+        throw new Error(`Invalid document type: ${docType}`);
+      }
+
+      const config = this.documentTypes[docType];
+
+      // Validate file
+      this.validateFile({
+        buffer: fileBuffer,
+        originalname: originalName,
+        mimetype: contentType,
+        size: fileBuffer.length
+      }, config);
+
+      // Create application-specific folder structure
+      let folder;
+      if (docType === 'application_marksheet') {
+        folder = `student-applications/${applicationId}/marksheets`;
+      } else if (docType === 'application_income_proof') {
+        folder = `student-applications/${applicationId}/income-proofs`;
+      } else if (docType === 'application_expense_proof') {
+        folder = `student-applications/${applicationId}/expense-proofs`;
+      } else {
+        folder = `student-applications/${applicationId}/${docType}`;
+      }
+
+      // Upload to R2 with specific folder
+      const uploadResult = await r2Client.uploadFile(
+        fileBuffer,
+        originalName,
+        contentType,
+        folder
+      );
+
+      // Save document metadata to database
+      const documentId = uuidv4();
+      const insertQuery = `
+        INSERT INTO documents (
+          id, owner_id, owner_type, doc_type, file_url, r2_key, 
+          original_name, content_type, file_size, description, 
+          uploaded_by_user_id, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+        RETURNING *
+      `;
+
+      const { rows } = await db.query(insertQuery, [
+        documentId,
+        applicationId,
+        'application',
+        docType,
+        uploadResult.url,
+        uploadResult.key,
+        uploadResult.originalName,
+        uploadResult.contentType,
+        uploadResult.size,
+        config.description,
+        uploadedByUserId
+      ]);
+
+      const document = rows[0];
+
+      return {
+        ...document,
+        r2_key: uploadResult.key,
+        original_name: uploadResult.originalName,
+        content_type: uploadResult.contentType,
+        size: uploadResult.size,
+        description: config.description
+      };
+
+    } catch (error) {
+      console.error('Application document upload error:', error);
       throw error;
     }
   }
