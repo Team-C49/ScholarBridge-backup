@@ -17,10 +17,13 @@ const ApplicationDetailView = () => {
   const [currentExpenses, setCurrentExpenses] = useState([]);
   const [trustPayments, setTrustPayments] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [kycDocuments, setKycDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [downloadingComplete, setDownloadingComplete] = useState(false);
+  const [updatingPayment, setUpdatingPayment] = useState(null);
 
   useEffect(() => {
     loadApplicationDetails();
@@ -38,6 +41,7 @@ const ApplicationDetailView = () => {
       setCurrentExpenses(response.currentExpenses || []);
       setTrustPayments(response.trustPayments || []);
       setDocuments(response.documents || []);
+      setKycDocuments(response.kycDocuments || []);
       
     } catch (error) {
       console.error('Failed to load application details:', error);
@@ -68,6 +72,48 @@ const ApplicationDetailView = () => {
       alert('Failed to download documents. Please try again.');
     } finally {
       setDownloadingZip(false);
+    }
+  };
+
+  const handleViewDocument = async (documentId) => {
+    try {
+      await studentApi.viewDocument(documentId);
+    } catch (error) {
+      console.error('Failed to view document:', error);
+      alert('Failed to view document. Please try again.');
+    }
+  };
+
+  const handleTrustPaymentConfirmation = async (paymentId, confirmed) => {
+    try {
+      setUpdatingPayment(paymentId);
+      await studentApi.confirmTrustPayment(paymentId, confirmed);
+      
+      // Update the local state
+      setTrustPayments(prev => 
+        prev.map(payment => 
+          payment.id === paymentId 
+            ? { ...payment, confirmed_by_student: confirmed }
+            : payment
+        )
+      );
+    } catch (error) {
+      console.error('Failed to update payment confirmation:', error);
+      alert('Failed to update confirmation. Please try again.');
+    } finally {
+      setUpdatingPayment(null);
+    }
+  };
+
+  const handleDownloadComplete = async () => {
+    try {
+      setDownloadingComplete(true);
+      await studentApi.downloadCompletePackage(id);
+    } catch (error) {
+      console.error('Failed to download complete package:', error);
+      alert('Failed to download complete package. Please try again.');
+    } finally {
+      setDownloadingComplete(false);
     }
   };
 
@@ -155,12 +201,12 @@ const ApplicationDetailView = () => {
                 </button>
                 
                 <button
-                  onClick={handleDownloadZip}
-                  disabled={downloadingZip}
+                  onClick={handleDownloadComplete}
+                  disabled={downloadingComplete}
                   className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
                   <Download className="w-4 h-4" />
-                  <span>{downloadingZip ? 'Downloading...' : 'Download Documents'}</span>
+                  <span>{downloadingComplete ? 'Downloading...' : 'Download Complete Package'}</span>
                 </button>
               </div>
             </div>
@@ -244,6 +290,34 @@ const ApplicationDetailView = () => {
                   ) : 'N/A'}
                 </p>
               </div>
+              
+              {kycDocuments.length > 0 && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">KYC Documents</label>
+                  <div className="mt-2 space-y-2">
+                    {kycDocuments.map((doc, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 border border-gray-200 rounded-lg bg-blue-50">
+                        <div className="flex items-center space-x-2">
+                          <FileText className="w-4 h-4 text-blue-500" />
+                          <div>
+                            <span className="text-sm font-medium">{doc.doc_type}</span>
+                            {doc.original_name && (
+                              <p className="text-xs text-gray-500">{doc.original_name}</p>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleViewDocument(doc.id)}
+                          className="flex items-center space-x-1 text-blue-600 hover:text-blue-700"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span className="text-sm">View</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -438,10 +512,15 @@ const ApplicationDetailView = () => {
                   <div key={index} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
                     <div className="flex items-center space-x-2">
                       <FileText className="w-4 h-4 text-blue-500" />
-                      <span className="text-sm font-medium">{doc.description}</span>
+                      <div>
+                        <span className="text-sm font-medium">{doc.doc_type}</span>
+                        {doc.original_name && (
+                          <p className="text-xs text-gray-500">{doc.original_name}</p>
+                        )}
+                      </div>
                     </div>
                     <button
-                      onClick={() => window.open(doc.url, '_blank')}
+                      onClick={() => handleViewDocument(doc.id)}
                       className="flex items-center space-x-1 text-blue-600 hover:text-blue-700"
                     >
                       <Eye className="w-4 h-4" />
@@ -464,12 +543,33 @@ const ApplicationDetailView = () => {
               <div className="space-y-3">
                 {trustPayments.map((payment, index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div>
+                    <div className="flex-1">
                       <p className="font-medium text-gray-900">{payment.trust_name}</p>
                       <p className="text-sm text-gray-600">Paid on {formatDate(payment.payment_date)}</p>
+                      {payment.reference_number && (
+                        <p className="text-xs text-gray-500">Ref: {payment.reference_number}</p>
+                      )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-center mx-4">
                       <p className="font-bold text-green-600">{formatCurrency(payment.amount)}</p>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id={`payment-${payment.id}`}
+                          checked={payment.confirmed_by_student || false}
+                          onChange={(e) => handleTrustPaymentConfirmation(payment.id, e.target.checked)}
+                          disabled={updatingPayment === payment.id}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                        <label htmlFor={`payment-${payment.id}`} className="ml-2 text-sm text-gray-700">
+                          {payment.confirmed_by_student ? 'Confirmed' : 'Confirm Receipt'}
+                        </label>
+                      </div>
+                      {payment.confirmed_by_student && (
+                        <CheckCircle className="w-5 h-5 text-green-500" />
+                      )}
                     </div>
                   </div>
                 ))}

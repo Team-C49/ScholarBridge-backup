@@ -400,6 +400,75 @@ export const studentApi = {
     } catch (error) {
       throw error.response?.data || { error: 'Failed to download documents' };
     }
+  },
+
+  // View document
+  viewDocument: async (documentId) => {
+    try {
+      // Create the document view URL with auth token
+      const token = localStorage.getItem('token');
+      
+      // Debug logging
+      console.log('🔍 viewDocument Debug:');
+      console.log('  - Document ID:', documentId);
+      console.log('  - Token from localStorage:', token ? `${token.substring(0, 50)}...` : 'null');
+      
+      if (!token) {
+        alert('Authentication token not found. Please log in again.');
+        return;
+      }
+      
+      const documentUrl = `${API_BASE_URL}/student/documents/${documentId}/view?token=${encodeURIComponent(token)}`;
+      console.log('  - Document URL:', documentUrl);
+      
+      // Open document in new tab
+      const newTab = window.open(documentUrl, '_blank');
+      
+      if (!newTab) {
+        // If popup blocked, show message to user
+        alert('Popup blocked. Please allow popups for this site to view documents, or try again.');
+        throw new Error('Popup blocked');
+      }
+      
+    } catch (error) {
+      console.error('Error viewing document:', error);
+      throw error.response?.data || { error: 'Failed to view document' };
+    }
+  },
+
+  // Confirm trust payment
+  confirmTrustPayment: async (paymentId, confirmed) => {
+    try {
+      const response = await api.put(`/student/trust-payments/${paymentId}/confirm`, {
+        confirmed: confirmed
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to update confirmation' };
+    }
+  },
+
+  // Download complete application package (PDF + Documents)
+  downloadCompletePackage: async (applicationId) => {
+    try {
+      const response = await api.get(`/student/applications/${applicationId}/download-complete`, {
+        responseType: 'blob',
+      });
+
+      // Create blob link to download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `complete-application-${applicationId}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true };
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to download complete package' };
+    }
   }
 };
 
