@@ -5,6 +5,68 @@ const db = require('../utils/db'); // Pool
 const { v4: uuidv4 } = require('uuid');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
+/**
+ * Utility function: Check if an application should be auto-closed
+ * and update its status accordingly
+ * @param {string} applicationId - The application ID to check
+ * @returns {Promise<object>} - { closed: boolean, status: string, totalApproved: number }
+ */
+async function checkAndAutoCloseApplication(applicationId) {
+  try {
+    // Get application's requested amount and current approved total
+    const result = await db.query(`
+      SELECT 
+        a.id,
+        a.total_amount_requested,
+        a.status as current_status,
+        COALESCE(SUM(aa.approved_amount), 0) as total_approved
+      FROM applications a
+      LEFT JOIN application_approvals aa ON aa.application_id = a.id AND aa.status = 'approved'
+      WHERE a.id = $1
+      GROUP BY a.id, a.total_amount_requested, a.status
+    `, [applicationId]);
+
+    if (result.rows.length === 0) {
+      return { closed: false, status: null, totalApproved: 0 };
+    }
+
+    const app = result.rows[0];
+    const totalApproved = parseFloat(app.total_approved);
+    const totalRequested = parseFloat(app.total_amount_requested);
+
+    // If fully funded, close the application
+    if (totalApproved >= totalRequested && app.current_status !== 'closed') {
+      await db.query(`
+        UPDATE applications 
+        SET status = 'closed', 
+            closed_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+      `, [applicationId]);
+
+      console.log(`✅ Application ${applicationId} auto-closed: ₹${totalApproved} >= ₹${totalRequested}`);
+      return { closed: true, status: 'closed', totalApproved };
+    } 
+    // If partially funded, update status
+    else if (totalApproved > 0 && app.current_status === 'submitted') {
+      await db.query(`
+        UPDATE applications 
+        SET status = 'partially_approved',
+            updated_at = NOW()
+        WHERE id = $1
+      `, [applicationId]);
+
+      console.log(`✅ Application ${applicationId} marked as partially approved: ₹${totalApproved} / ₹${totalRequested}`);
+      return { closed: false, status: 'partially_approved', totalApproved };
+    }
+
+    return { closed: app.current_status === 'closed', status: app.current_status, totalApproved };
+  } catch (error) {
+    console.error('Error in checkAndAutoCloseApplication:', error);
+    throw error;
+  }
+}
+
 //
 // Public: trust registration request (no auth required)
 // Enhanced to handle document uploads and complete registration data
@@ -401,8 +463,623 @@ router.post('/register-request/:requestId/resend-confirmation', async (req, res)
   }
 });
 
+/**
+ * View/Download individual document for trust
+ * GET /api/trusts/documents/:documentId/view
+ * NOTE: This route is placed BEFORE auth middleware to allow custom token handling from query params
+ */
+router.get('/documents/:documentId/view', async (req, res) => {
+  try {
+    const documentId = req.params.documentId;
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    
+    console.log('🔍 Document view request:');
+    console.log('  - Document ID:', documentId);
+    console.log('  - Token from query:', req.query.token ? 'Present' : 'Missing');
+    console.log('  - Token from header:', req.headers.authorization ? 'Present' : 'Missing');
+    console.log('  - Final token:', token ? token.substring(0, 50) + '...' : 'Missing');
+    
+    // Verify token if provided
+    if (token) {
+      const jwt = require('jsonwebtoken');
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        console.log('✅ Token verified for user:', decoded.email, 'Role:', decoded.role);
+      } catch (err) {
+        console.error('❌ Token verification failed:', err.message);
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    } else {
+      console.error('❌ No token provided in request');
+      return res.status(401).json({ error: 'Missing auth token' });
+    }
+    
+    const zipService = require('../services/zipService');
+    
+    // Get document details
+    const document = (await db.query(`
+      SELECT d.*, COALESCE(a.student_user_id, d.owner_id) as student_user_id
+      FROM documents d
+      LEFT JOIN applications a ON d.owner_id = a.id AND d.owner_type = 'application'
+      WHERE d.id = $1
+    `, [documentId])).rows[0];
+    
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Get the document from R2
+    const fileKey = zipService.extractKeyFromUrl(document.file_url);
+    if (!fileKey) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const documentStream = await zipService.getDocumentStream(fileKey);
+    
+    // Set appropriate headers based on file type
+    const fileName = document.original_name || `${document.doc_type}_${document.id}`;
+    const fileExtension = fileName.split('.').pop().toLowerCase();
+    
+    let contentType = 'application/octet-stream';
+    if (fileExtension === 'pdf') contentType = 'application/pdf';
+    else if (['jpg', 'jpeg'].includes(fileExtension)) contentType = 'image/jpeg';
+    else if (fileExtension === 'png') contentType = 'image/png';
+    else if (fileExtension === 'gif') contentType = 'image/gif';
+    else if (['doc', 'docx'].includes(fileExtension)) contentType = 'application/msword';
+    else if (fileExtension === 'txt') contentType = 'text/plain';
+    
+    // Set headers for proper viewing
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    // Handle stream errors
+    documentStream.on('error', (streamError) => {
+      console.error('Document stream error:', streamError);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to stream document' });
+      }
+    });
+    
+    // Pipe the document stream to response
+    documentStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Document view error:', error);
+    res.status(500).json({ 
+      error: 'Failed to retrieve document',
+      message: error.message 
+    });
+  }
+});
+
 // Protected trust routes:
 router.use(authMiddleware, requireRole('trust'));
+
+/**
+ * Maintenance endpoint: Check and auto-close all fully funded applications
+ * GET /api/trusts/maintenance/auto-close-applications
+ * This can be called periodically or manually to ensure all applications are properly closed
+ */
+router.get('/maintenance/auto-close-applications', async (req, res) => {
+  try {
+    console.log('🔧 Running maintenance: Auto-closing fully funded applications...');
+
+    // Find all applications that are fully funded but not closed
+    const applicationsResult = await db.query(`
+      SELECT 
+        a.id,
+        a.status,
+        a.total_amount_requested,
+        COALESCE(SUM(aa.approved_amount), 0) as total_approved
+      FROM applications a
+      LEFT JOIN application_approvals aa ON aa.application_id = a.id AND aa.status = 'approved'
+      WHERE a.status != 'closed'
+      GROUP BY a.id, a.status, a.total_amount_requested
+      HAVING COALESCE(SUM(aa.approved_amount), 0) >= a.total_amount_requested
+    `);
+
+    const applicationsToClose = applicationsResult.rows;
+    const closedCount = applicationsToClose.length;
+
+    // Close each application
+    for (const app of applicationsToClose) {
+      await checkAndAutoCloseApplication(app.id);
+    }
+
+    // Also check for partially approved applications
+    const partiallyApprovedResult = await db.query(`
+      SELECT 
+        a.id,
+        a.status,
+        COALESCE(SUM(aa.approved_amount), 0) as total_approved
+      FROM applications a
+      LEFT JOIN application_approvals aa ON aa.application_id = a.id AND aa.status = 'approved'
+      WHERE a.status = 'submitted'
+      GROUP BY a.id, a.status
+      HAVING COALESCE(SUM(aa.approved_amount), 0) > 0
+    `);
+
+    const partiallyApproved = partiallyApprovedResult.rows;
+    const partiallyApprovedCount = partiallyApproved.length;
+
+    for (const app of partiallyApproved) {
+      await checkAndAutoCloseApplication(app.id);
+    }
+
+    res.json({
+      success: true,
+      message: 'Maintenance completed successfully',
+      closedApplications: closedCount,
+      updatedToPartiallyApproved: partiallyApprovedCount
+    });
+  } catch (err) {
+    console.error('Error in maintenance auto-close:', err);
+    res.status(500).json({ error: 'Maintenance failed' });
+  }
+});
+
+/**
+ * Get trust preferences
+ * GET /api/trusts/me/preferences
+ */
+router.get('/me/preferences', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT preferences FROM trusts WHERE user_id = $1', [req.user.id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Trust profile not found.' });
+    }
+    res.json(rows[0].preferences || {});
+  } catch (err) {
+    console.error('Error fetching trust preferences:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * Update trust preferences
+ * PUT /api/trusts/me/preferences
+ */
+router.put('/me/preferences', async (req, res) => {
+  try {
+    const trustUserId = req.user.id;
+    const preferences = req.body;
+
+    const query = `
+      UPDATE trusts
+      SET preferences = $1, updated_at = now()
+      WHERE user_id = $2
+      RETURNING user_id, preferences;
+    `;
+    const { rows } = await db.query(query, [JSON.stringify(preferences), trustUserId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Trust profile not found.' });
+    }
+    res.json({ 
+      message: 'Preferences updated successfully.', 
+      preferences: rows[0].preferences 
+    });
+  } catch (err) {
+    console.error('Error updating trust preferences:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * Get dashboard statistics for the current trust
+ * GET /api/trusts/dashboard/stats
+ */
+router.get('/dashboard/stats', async (req, res) => {
+  try {
+    const trustUserId = req.user.id;
+
+    const statsQuery = `
+      WITH 
+      -- Applications this trust has approved
+      approved_apps AS (
+        SELECT 
+          COUNT(*) as count,
+          COALESCE(SUM(aa.approved_amount), 0) as total_approved_amount
+        FROM application_approvals aa
+        WHERE aa.trust_user_id = $1 AND aa.status = 'approved'
+      ),
+      -- Applications this trust has rejected
+      rejected_apps AS (
+        SELECT COUNT(*) as count
+        FROM application_approvals aa
+        WHERE aa.trust_user_id = $1 AND aa.status = 'rejected'
+      ),
+      -- Applications pending review by this trust (not acted upon yet)
+      pending_apps AS (
+        SELECT 
+          COUNT(*) as count,
+          COALESCE(SUM(a.total_amount_requested), 0) as total_requested_amount
+        FROM applications a
+        LEFT JOIN application_approvals aa ON aa.application_id = a.id AND aa.trust_user_id = $1
+        WHERE aa.id IS NULL AND a.status != 'closed'
+      )
+      SELECT 
+        (SELECT count FROM pending_apps) as total,
+        (SELECT count FROM approved_apps) as approved,
+        (SELECT count FROM rejected_apps) as rejected,
+        (SELECT total_requested_amount FROM pending_apps) as total_requested,
+        (SELECT total_approved_amount FROM approved_apps) as total_approved
+    `;
+
+    const { rows } = await db.query(statsQuery, [trustUserId]);
+    const stats = rows[0] || {
+      total: 0,
+      approved: 0,
+      rejected: 0,
+      total_requested: 0,
+      total_approved: 0
+    };
+
+    res.json(stats);
+  } catch (err) {
+    console.error('Error fetching dashboard stats:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * Get dashboard applications with "Best Fit" algorithm
+ * GET /api/trusts/dashboard/applications
+ */
+router.get('/dashboard/applications', async (req, res) => {
+  try {
+    const trustUserId = req.user.id;
+    const { view, status } = req.query;
+
+    let statusFilter = '';
+    let approvalJoin = '';
+    
+    if (status === 'approved') {
+      // Show only applications approved by THIS trust
+      approvalJoin = `
+        INNER JOIN application_approvals current_trust_approval 
+        ON current_trust_approval.application_id = a.id 
+        AND current_trust_approval.trust_user_id = $1 
+        AND current_trust_approval.status = 'approved'
+      `;
+      statusFilter = "";
+    } else if (status === 'rejected') {
+      // Show only applications rejected by THIS trust
+      approvalJoin = `
+        INNER JOIN application_approvals current_trust_approval 
+        ON current_trust_approval.application_id = a.id 
+        AND current_trust_approval.trust_user_id = $1 
+        AND current_trust_approval.status = 'rejected'
+      `;
+      statusFilter = "";
+    } else {
+      // Default: Show applications NOT yet acted upon by this trust (pending review)
+      // This includes applications that may have been approved by other trusts
+      approvalJoin = `
+        LEFT JOIN application_approvals current_trust_approval 
+        ON current_trust_approval.application_id = a.id 
+        AND current_trust_approval.trust_user_id = $1
+      `;
+      // Only show applications where this trust hasn't approved/rejected AND not fully funded (closed)
+      statusFilter = "AND current_trust_approval.id IS NULL AND a.status != 'closed'";
+    }
+
+    const query = `
+      WITH
+      -- Step 1: Get the preferences for the currently logged-in trust
+      trust_prefs AS (
+        SELECT
+          preferences->>'preferred_gender' AS p_gender,
+          jsonb_array_to_text_array(preferences->'preferred_courses') AS p_courses,
+          jsonb_array_to_text_array(preferences->'preferred_cities') AS p_cities,
+          (preferences->>'max_family_income_lpa')::numeric AS p_max_income,
+          (preferences->>'min_academic_percentage')::numeric AS p_min_grade
+        FROM trusts
+        WHERE user_id = $1
+      ),
+      -- Step 2: Pre-calculate academic and financial info for each application
+      application_details AS (
+        SELECT
+          app.id AS application_id,
+          -- Calculate Simple Average Academic Score from ALL education_history grades
+          COALESCE(AVG(eh.grade::numeric), 0) AS weighted_academic_score,
+          -- Calculate Total Family Income in Lakhs Per Annum by summing all family members
+          COALESCE(SUM(fm.monthly_income), 0) * 12 / 100000 AS total_family_income_lpa
+        FROM
+          applications app
+        LEFT JOIN education_history eh ON app.id = eh.application_id
+        LEFT JOIN family_members fm ON app.id = fm.application_id
+        GROUP BY app.id
+      )
+      -- Step 3: Main query to filter, score, and sort applications
+      SELECT
+        a.id AS application_id,
+        sp.full_name,
+        a.current_course_name,
+        sp.address->>'city' as city,
+        ad.total_family_income_lpa,
+        ad.weighted_academic_score,
+        a.total_amount_requested,
+        -- Use calculated sum from application_approvals, fall back to old column if no approvals exist
+        GREATEST(
+          COALESCE((
+            SELECT SUM(aa.approved_amount) 
+            FROM application_approvals aa 
+            WHERE aa.application_id = a.id AND aa.status = 'approved'
+          ), 0),
+          COALESCE(a.total_amount_approved, 0)
+        ) as total_amount_approved,
+        a.status,
+        a.created_at,
+        sp.gender,
+        a.academic_year,
+        -- Current trust's approval status for this application
+        current_trust_approval.status as my_approval_status,
+        current_trust_approval.approved_amount as my_approved_amount,
+        current_trust_approval.approved_at as my_approved_at,
+        -- THE FINAL SCORING ALGORITHM
+        (
+          CASE WHEN sp.gender = tp.p_gender OR tp.p_gender IS NULL OR tp.p_gender = 'Any' THEN 35 ELSE 0 END +
+          CASE WHEN tp.p_courses IS NULL OR a.current_course_name = ANY(tp.p_courses) THEN 30 ELSE 0 END +
+          CASE WHEN tp.p_cities IS NULL OR sp.address->>'city' = ANY(tp.p_cities) THEN 15 ELSE 0 END +
+          CASE WHEN tp.p_max_income IS NULL OR ad.total_family_income_lpa <= tp.p_max_income THEN 15 ELSE 0 END +
+          CASE WHEN tp.p_min_grade IS NULL OR ad.weighted_academic_score >= tp.p_min_grade THEN 5 ELSE 0 END
+        ) AS match_score
+      FROM
+        applications a
+      JOIN
+        student_profiles sp ON a.student_user_id = sp.user_id
+      JOIN
+        application_details ad ON a.id = ad.application_id
+      ${approvalJoin}
+      CROSS JOIN
+        trust_prefs tp
+      -- Filter by status and apply smart filtering if needed
+      WHERE 1=1 ${statusFilter}
+      ${view !== 'all' ? `
+        AND (tp.p_gender IS NULL OR tp.p_gender = 'Any' OR sp.gender = tp.p_gender)
+        AND (tp.p_courses IS NULL OR array_length(tp.p_courses, 1) IS NULL OR a.current_course_name = ANY(tp.p_courses))
+        AND (tp.p_cities IS NULL OR array_length(tp.p_cities, 1) IS NULL OR sp.address->>'city' = ANY(tp.p_cities))
+        AND (tp.p_max_income IS NULL OR ad.total_family_income_lpa <= tp.p_max_income)
+        AND (tp.p_min_grade IS NULL OR ad.weighted_academic_score >= tp.p_min_grade)
+      ` : ''}
+      -- THE FINAL SORTING HIERARCHY
+      ORDER BY
+        match_score DESC,
+        ad.total_family_income_lpa ASC,
+        a.created_at ASC;
+    `;
+
+    const { rows } = await db.query(query, [trustUserId]);
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching dashboard applications:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * Get single application details for trust view
+ * GET /api/trusts/application/:applicationId
+ */
+router.get('/application/:applicationId', async (req, res) => {
+  try {
+    const applicationId = req.params.applicationId;
+
+    // Get comprehensive application details
+    const query = `
+      SELECT 
+        a.*,
+        sp.full_name, sp.phone_number, sp.date_of_birth, sp.gender,
+        sp.address, sp.profile_picture_url, sp.kyc_doc_type,
+        u.email as student_email,
+        -- Calculate total family income
+        COALESCE(SUM(fm.monthly_income), 0) as total_family_income
+      FROM applications a
+      JOIN student_profiles sp ON a.student_user_id = sp.user_id
+      JOIN users u ON sp.user_id = u.id
+      LEFT JOIN family_members fm ON a.id = fm.application_id
+      WHERE a.id = $1
+      GROUP BY a.id, sp.full_name, sp.phone_number, sp.date_of_birth, 
+               sp.gender, sp.address, sp.profile_picture_url, sp.kyc_doc_type, u.email
+    `;
+
+    const applicationResult = await db.query(query, [applicationId]);
+    if (applicationResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const application = applicationResult.rows[0];
+
+    // Get education history
+    const educationQuery = `
+      SELECT * FROM education_history 
+      WHERE application_id = $1 
+      ORDER BY year_of_passing DESC
+    `;
+    const educationResult = await db.query(educationQuery, [applicationId]);
+
+    // Get family members
+    const familyQuery = `
+      SELECT * FROM family_members 
+      WHERE application_id = $1 
+      ORDER BY created_at
+    `;
+    const familyResult = await db.query(familyQuery, [applicationId]);
+
+    // Get current expenses
+    const expensesQuery = `
+      SELECT * FROM current_expenses 
+      WHERE application_id = $1 
+      ORDER BY created_at
+    `;
+    const expensesResult = await db.query(expensesQuery, [applicationId]);
+
+    // Get documents
+    const documentsQuery = `
+      SELECT d.*, 'application' as source_type
+      FROM documents d 
+      WHERE d.owner_id = $1 AND d.owner_type = 'application'
+      UNION ALL
+      SELECT d.*, 'kyc' as source_type
+      FROM documents d 
+      WHERE d.owner_id = $2 AND d.owner_type = 'student' AND d.doc_type = 'kyc_document'
+      ORDER BY created_at
+    `;
+    const documentsResult = await db.query(documentsQuery, [applicationId, application.student_user_id]);
+
+    res.json({
+      application,
+      education_history: educationResult.rows,
+      family_members: familyResult.rows,
+      current_expenses: expensesResult.rows,
+      documents: documentsResult.rows
+    });
+
+  } catch (error) {
+    console.error('Error fetching application details:', error);
+    res.status(500).json({ error: 'Failed to fetch application details' });
+  }
+});
+
+/**
+ * Approve/Reject application
+ * PUT /api/trusts/application/:applicationId/status
+ */
+router.put('/application/:applicationId/status', async (req, res) => {
+  try {
+    const applicationId = req.params.applicationId;
+    const trustUserId = req.user.id;
+    const { status, approved_amount, remarks } = req.body;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be approved or rejected.' });
+    }
+
+    // Get application details
+    const appResult = await db.query(
+      'SELECT total_amount_requested FROM applications WHERE id = $1',
+      [applicationId]
+    );
+
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    if (status === 'approved') {
+      // Validate approved amount
+      if (!approved_amount || approved_amount <= 0) {
+        return res.status(400).json({ error: 'Approved amount must be greater than 0' });
+      }
+
+      // Insert into application_approvals table
+      const insertQuery = `
+        INSERT INTO application_approvals (
+          application_id, 
+          trust_user_id, 
+          approved_amount, 
+          status,
+          approved_at
+        ) VALUES ($1, $2, $3, 'approved', NOW())
+        RETURNING *
+      `;
+
+      const { rows } = await db.query(insertQuery, [
+        applicationId,
+        trustUserId,
+        approved_amount
+      ]);
+
+      // Check if application should be auto-closed
+      const { closed, status: newStatus, totalApproved } = await checkAndAutoCloseApplication(applicationId);
+
+      res.json({
+        message: 'Application approved successfully',
+        approval: rows[0],
+        applicationStatus: newStatus,
+        applicationClosed: closed,
+        totalApproved: totalApproved
+      });
+    } else {
+      // For rejection, just add a rejection record
+      const insertQuery = `
+        INSERT INTO application_approvals (
+          application_id, 
+          trust_user_id, 
+          approved_amount, 
+          status,
+          rejection_reason,
+          approved_at
+        ) VALUES ($1, $2, 0, 'rejected', $3, NOW())
+        RETURNING *
+      `;
+
+      const { rows } = await db.query(insertQuery, [
+        applicationId,
+        trustUserId,
+        remarks || 'No reason provided'
+      ]);
+
+      res.json({
+        message: 'Application rejected',
+        approval: rows[0]
+      });
+    }
+
+  } catch (error) {
+    console.error('Error updating application status:', error);
+    res.status(500).json({ error: 'Failed to update application status' });
+  }
+});
+
+/**
+ * Download application PDF for trust
+ * GET /api/trusts/application/:applicationId/pdf
+ */
+router.get('/application/:applicationId/pdf', async (req, res) => {
+  try {
+    const applicationId = req.params.applicationId;
+    const zipService = require('../services/zipService');
+    
+    // Generate PDF for the application
+    const pdfBuffer = await zipService.generateApplicationPDF(applicationId);
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="application-${applicationId}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating PDF for trust:', error);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+/**
+ * Download complete application package (ZIP) for trust
+ * GET /api/trusts/application/:applicationId/complete
+ */
+router.get('/application/:applicationId/complete', async (req, res) => {
+  try {
+    const applicationId = req.params.applicationId;
+    const zipService = require('../services/zipService');
+    
+    // Generate complete ZIP package
+    const zipBuffer = await zipService.generateCompletePackage(applicationId);
+    
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="application-${applicationId}-complete.zip"`);
+    res.setHeader('Content-Length', zipBuffer.length);
+    
+    res.send(zipBuffer);
+  } catch (error) {
+    console.error('Error generating complete package for trust:', error);
+    res.status(500).json({ error: 'Failed to generate complete package' });
+  }
+});
 
 router.get('/applications', async (req, res) => {
   try {

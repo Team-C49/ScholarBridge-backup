@@ -172,6 +172,104 @@ class ZipService {
       }
     });
   }
+
+  // Alias for generateCompletePackage (used by trust routes)
+  async generateCompletePackage(applicationId) {
+    const db = require('../utils/db');
+    const pdfService = require('./pdfService');
+    
+    // Get application details with student profile
+    const appQuery = `
+      SELECT 
+        a.*,
+        sp.full_name, sp.phone_number, sp.date_of_birth, sp.gender,
+        sp.address, sp.profile_picture_url, sp.kyc_doc_type,
+        u.email as student_email,
+        COALESCE(SUM(fm.monthly_income), 0) as total_family_income
+      FROM applications a
+      JOIN student_profiles sp ON a.student_user_id = sp.user_id
+      JOIN users u ON sp.user_id = u.id
+      LEFT JOIN family_members fm ON a.id = fm.application_id
+      WHERE a.id = $1
+      GROUP BY a.id, sp.full_name, sp.phone_number, sp.date_of_birth, 
+               sp.gender, sp.address, sp.profile_picture_url, sp.kyc_doc_type, u.email
+    `;
+    const appResult = await db.query(appQuery, [applicationId]);
+    
+    if (appResult.rows.length === 0) {
+      throw new Error('Application not found');
+    }
+
+    const application = appResult.rows[0];
+    const studentUserId = application.student_user_id;
+
+    // Get education history
+    const educationHistory = (await db.query(
+      `SELECT * FROM education_history WHERE application_id=$1 ORDER BY year_of_passing DESC`,
+      [applicationId]
+    )).rows;
+
+    // Get family members
+    const familyMembers = (await db.query(
+      `SELECT * FROM family_members WHERE application_id=$1 ORDER BY created_at`,
+      [applicationId]
+    )).rows;
+
+    // Get current expenses
+    const currentExpenses = (await db.query(
+      `SELECT * FROM current_expenses WHERE application_id=$1 ORDER BY created_at`,
+      [applicationId]
+    )).rows;
+
+    // Get all documents for this application
+    const docsQuery = `
+      SELECT d.*, 'application' as source_type
+      FROM documents d 
+      WHERE d.owner_id = $1 AND d.owner_type = 'application'
+      UNION ALL
+      SELECT d.*, 'kyc' as source_type
+      FROM documents d 
+      WHERE d.owner_id = $2 AND d.owner_type = 'student' AND d.doc_type = 'kyc_document'
+      ORDER BY created_at
+    `;
+    const docsResult = await db.query(docsQuery, [applicationId, studentUserId]);
+
+    // Get trust payments
+    const trustPayments = (await db.query(
+      `SELECT * FROM trust_payments WHERE application_id=$1 ORDER BY payment_date DESC`,
+      [applicationId]
+    )).rows;
+
+    // Prepare data for PDF generation (matching student route structure)
+    const profile = {
+      full_name: application.full_name,
+      phone_number: application.phone_number,
+      date_of_birth: application.date_of_birth,
+      gender: application.gender,
+      address: application.address,
+      profile_picture_url: application.profile_picture_url,
+      kyc_doc_type: application.kyc_doc_type,
+      email: application.student_email,
+      user_id: studentUserId
+    };
+
+    const applicationData = {
+      application,
+      profile,
+      educationHistory,
+      familyMembers,
+      currentExpenses,
+      documents: docsResult.rows.filter(d => d.source_type === 'application'),
+      kycDocuments: docsResult.rows.filter(d => d.source_type === 'kyc'),
+      trustPayments
+    };
+
+    // Generate PDF
+    const pdfBuffer = await pdfService.generateApplicationPDF(applicationData);
+
+    // Create complete package zip
+    return await this.createCompletePackageZip(pdfBuffer, docsResult.rows, applicationId);
+  }
 }
 
 module.exports = new ZipService();

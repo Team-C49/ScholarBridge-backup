@@ -15,7 +15,9 @@ const ApplicationDetailView = () => {
   const [educationHistory, setEducationHistory] = useState([]);
   const [familyMembers, setFamilyMembers] = useState([]);
   const [currentExpenses, setCurrentExpenses] = useState([]);
-  const [trustPayments, setTrustPayments] = useState([]);
+  const [trustApprovals, setTrustApprovals] = useState([]);
+  const [totalApproved, setTotalApproved] = useState(0);
+  const [remainingAmount, setRemainingAmount] = useState(0);
   const [documents, setDocuments] = useState([]);
   const [kycDocuments, setKycDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +25,7 @@ const ApplicationDetailView = () => {
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [downloadingComplete, setDownloadingComplete] = useState(false);
-  const [updatingPayment, setUpdatingPayment] = useState(null);
+  const [updatingApproval, setUpdatingApproval] = useState(null);
 
   useEffect(() => {
     loadApplicationDetails();
@@ -39,7 +41,9 @@ const ApplicationDetailView = () => {
       setEducationHistory(response.educationHistory || []);
       setFamilyMembers(response.familyMembers || []);
       setCurrentExpenses(response.currentExpenses || []);
-      setTrustPayments(response.trustPayments || []);
+      setTrustApprovals(response.trustApprovals || []);
+      setTotalApproved(response.totalApproved || 0);
+      setRemainingAmount(response.remainingAmount || 0);
       setDocuments(response.documents || []);
       setKycDocuments(response.kycDocuments || []);
       
@@ -84,24 +88,18 @@ const ApplicationDetailView = () => {
     }
   };
 
-  const handleTrustPaymentConfirmation = async (paymentId, confirmed) => {
+  const handleTrustApprovalConfirmation = async (approvalId) => {
     try {
-      setUpdatingPayment(paymentId);
-      await studentApi.confirmTrustPayment(paymentId, confirmed);
+      setUpdatingApproval(approvalId);
+      await studentApi.confirmTrustApproval(id, approvalId);
       
-      // Update the local state
-      setTrustPayments(prev => 
-        prev.map(payment => 
-          payment.id === paymentId 
-            ? { ...payment, confirmed_by_student: confirmed }
-            : payment
-        )
-      );
+      // Reload application details to get updated data
+      await loadApplicationDetails();
     } catch (error) {
-      console.error('Failed to update payment confirmation:', error);
-      alert('Failed to update confirmation. Please try again.');
+      console.error('Failed to confirm approval:', error);
+      alert('Failed to confirm receipt. Please try again.');
     } finally {
-      setUpdatingPayment(null);
+      setUpdatingApproval(null);
     }
   };
 
@@ -532,42 +530,43 @@ const ApplicationDetailView = () => {
             </div>
           )}
 
-          {/* Trust Payments */}
-          {trustPayments.length > 0 && (
+          {/* Trust Approvals */}
+          {trustApprovals.length > 0 && (
             <div className="p-6">
               <div className="flex items-center space-x-2 mb-4">
                 <Building2 className="w-5 h-5 text-green-600" />
-                <h2 className="text-lg font-semibold text-gray-900">Trust Payments</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Trust Approvals</h2>
               </div>
               
               <div className="space-y-3">
-                {trustPayments.map((payment, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                {trustApprovals.map((approval) => (
+                  <div key={approval.id} className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
                     <div className="flex-1">
-                      <p className="font-medium text-gray-900">{payment.trust_name}</p>
-                      <p className="text-sm text-gray-600">Paid on {formatDate(payment.payment_date)}</p>
-                      {payment.reference_number && (
-                        <p className="text-xs text-gray-500">Ref: {payment.reference_number}</p>
+                      <p className="font-medium text-gray-900">{approval.trust_name}</p>
+                      <p className="text-sm text-gray-600">{approval.trust_email}</p>
+                      {approval.trust_phone && (
+                        <p className="text-xs text-gray-500">Phone: {approval.trust_phone}</p>
                       )}
+                      <p className="text-xs text-gray-500">Approved on {formatDate(approval.approved_at)}</p>
                     </div>
                     <div className="text-center mx-4">
-                      <p className="font-bold text-green-600">{formatCurrency(payment.amount)}</p>
+                      <p className="font-bold text-green-600">{formatCurrency(approval.approved_amount)}</p>
                     </div>
                     <div className="flex items-center space-x-3">
                       <div className="flex items-center">
                         <input
                           type="checkbox"
-                          id={`payment-${payment.id}`}
-                          checked={payment.confirmed_by_student || false}
-                          onChange={(e) => handleTrustPaymentConfirmation(payment.id, e.target.checked)}
-                          disabled={updatingPayment === payment.id}
-                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                          id={`approval-${approval.id}`}
+                          checked={approval.student_confirmed_receipt || false}
+                          onChange={() => !approval.student_confirmed_receipt && handleTrustApprovalConfirmation(approval.id)}
+                          disabled={updatingApproval === approval.id || approval.student_confirmed_receipt}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 disabled:opacity-50"
                         />
-                        <label htmlFor={`payment-${payment.id}`} className="ml-2 text-sm text-gray-700">
-                          {payment.confirmed_by_student ? 'Confirmed' : 'Confirm Receipt'}
+                        <label htmlFor={`approval-${approval.id}`} className="ml-2 text-sm text-gray-700">
+                          {approval.student_confirmed_receipt ? 'Confirmed' : 'Confirm Receipt'}
                         </label>
                       </div>
-                      {payment.confirmed_by_student && (
+                      {approval.student_confirmed_receipt && (
                         <CheckCircle className="w-5 h-5 text-green-500" />
                       )}
                     </div>
@@ -575,14 +574,22 @@ const ApplicationDetailView = () => {
                 ))}
               </div>
               
-              <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium text-gray-900">Total Received:</span>
-                  <span className="text-lg font-bold text-green-600">
-                    {formatCurrency(
-                      trustPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0)
-                    )}
-                  </span>
+              <div className="mt-4 space-y-2">
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-gray-900">Total Approved:</span>
+                    <span className="text-lg font-bold text-green-600">
+                      {formatCurrency(totalApproved)}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-gray-900">Remaining Amount:</span>
+                    <span className="text-lg font-bold text-blue-600">
+                      {formatCurrency(remainingAmount)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

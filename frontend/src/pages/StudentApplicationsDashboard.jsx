@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileText, Eye, Download, Plus, Calendar, DollarSign, 
-  CheckCircle, Clock, XCircle, AlertCircle, Building2
+  CheckCircle, Clock, XCircle, AlertCircle, Building2, ArrowLeft
 } from 'lucide-react';
 import { studentApi } from '../utils/api';
 
@@ -11,6 +11,7 @@ const StudentApplicationsDashboard = () => {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [downloadingApp, setDownloadingApp] = useState(null);
 
   useEffect(() => {
     loadApplications();
@@ -35,8 +36,12 @@ const StudentApplicationsDashboard = () => {
         return <Clock className="w-4 h-4 text-yellow-500" />;
       case 'approved':
         return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'partially_approved':
+        return <CheckCircle className="w-4 h-4 text-blue-500" />;
       case 'rejected':
         return <XCircle className="w-4 h-4 text-red-500" />;
+      case 'closed':
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
       default:
         return <AlertCircle className="w-4 h-4 text-gray-500" />;
     }
@@ -48,8 +53,12 @@ const StudentApplicationsDashboard = () => {
         return 'Under Review';
       case 'approved':
         return 'Approved';
+      case 'partially_approved':
+        return 'Partially Approved';
       case 'rejected':
         return 'Rejected';
+      case 'closed':
+        return 'Fully Funded';
       default:
         return 'Unknown';
     }
@@ -71,6 +80,18 @@ const StudentApplicationsDashboard = () => {
     });
   };
 
+  const handleDownloadApplication = async (applicationId) => {
+    try {
+      setDownloadingApp(applicationId);
+      await studentApi.downloadCompletePackage(applicationId);
+    } catch (error) {
+      console.error('Failed to download application package:', error);
+      alert('Failed to download application package. Please try again.');
+    } finally {
+      setDownloadingApp(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -89,9 +110,18 @@ const StudentApplicationsDashboard = () => {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
           <div className="p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">My Applications</h1>
-                <p className="text-gray-600 mt-1">Manage and view your scholarship applications</p>
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => navigate('/student/dashboard')}
+                  className="flex items-center space-x-2 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  <span>Back</span>
+                </button>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">My Applications</h1>
+                  <p className="text-gray-600 mt-1">Manage and view your scholarship applications</p>
+                </div>
               </div>
               <button
                 onClick={() => navigate('/student/application/new')}
@@ -155,9 +185,9 @@ const StudentApplicationsDashboard = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {applications.map((application) => {
-                    const receivedAmount = application.received_amount || 0;
-                    const requestedAmount = application.total_amount_requested || 0;
-                    const remainingAmount = Math.max(0, requestedAmount - receivedAmount);
+                    const receivedAmount = parseFloat(application.total_amount_approved) || 0;
+                    const requestedAmount = parseFloat(application.total_amount_requested) || 0;
+                    const remainingAmount = parseFloat(application.remaining_amount) || Math.max(0, requestedAmount - receivedAmount);
 
                     return (
                       <tr key={application.id} className="hover:bg-gray-50">
@@ -225,11 +255,12 @@ const StudentApplicationsDashboard = () => {
                               <span>View</span>
                             </button>
                             <button
-                              onClick={() => navigate(`/student/applications/${application.id}/download`)}
-                              className="flex items-center space-x-1 text-blue-600 hover:text-blue-700"
+                              onClick={() => handleDownloadApplication(application.id)}
+                              disabled={downloadingApp === application.id}
+                              className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <Download className="w-4 h-4" />
-                              <span>Download</span>
+                              <span>{downloadingApp === application.id ? 'Downloading...' : 'Download'}</span>
                             </button>
                           </div>
                         </td>
@@ -275,7 +306,7 @@ const StudentApplicationsDashboard = () => {
                   <p className="text-sm font-medium text-gray-600">Total Received</p>
                   <p className="text-2xl font-bold text-blue-600">
                     {formatCurrency(
-                      applications.reduce((sum, app) => sum + (app.received_amount || 0), 0)
+                      applications.reduce((sum, app) => sum + (parseFloat(app.total_amount_approved) || 0), 0)
                     )}
                   </p>
                 </div>
@@ -290,7 +321,7 @@ const StudentApplicationsDashboard = () => {
                   <p className="text-2xl font-bold text-orange-600">
                     {formatCurrency(
                       applications.reduce((sum, app) => {
-                        const remaining = (app.total_amount_requested || 0) - (app.received_amount || 0);
+                        const remaining = parseFloat(app.remaining_amount) || 0;
                         return sum + Math.max(0, remaining);
                       }, 0)
                     )}

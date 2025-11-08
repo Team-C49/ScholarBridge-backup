@@ -233,7 +233,17 @@ router.post('/applications', async (req, res) => {
 router.get('/applications', async (req, res) => {
   try {
     const userId = req.user.id;
-    const { rows } = await db.query(`SELECT * FROM applications WHERE student_user_id=$1 ORDER BY created_at DESC`, [userId]);
+    const { rows } = await db.query(`
+      SELECT 
+        a.*,
+        COALESCE(SUM(aa.approved_amount), 0) as total_amount_approved,
+        (a.total_amount_requested - COALESCE(SUM(aa.approved_amount), 0)) as remaining_amount
+      FROM applications a
+      LEFT JOIN application_approvals aa ON a.id = aa.application_id AND aa.status = 'approved'
+      WHERE a.student_user_id = $1
+      GROUP BY a.id
+      ORDER BY a.created_at DESC
+    `, [userId]);
     return res.json({ applications: rows });
   } catch (err) {
     console.error('list applications error', err);
@@ -270,13 +280,27 @@ router.get('/applications/:id', async (req, res) => {
       WHERE owner_type='application' AND owner_id=$1
     `, [appId])).rows;
     
-    // Get trust payments
-    const trustPayments = (await db.query(`
-      SELECT tp.*, tp.trust_name, tp.amount, tp.payment_date, tp.reference_number, tp.remarks
-      FROM trust_payments tp 
-      WHERE tp.application_id=$1
-      ORDER BY tp.payment_date DESC
+    // Get trust approvals with trust details
+    const trustApprovals = (await db.query(`
+      SELECT 
+        aa.id,
+        aa.approved_amount,
+        aa.status,
+        aa.rejection_reason,
+        aa.approved_at,
+        aa.student_confirmed_receipt,
+        aa.student_confirmed_at,
+        t.org_name as trust_name,
+        t.contact_email as trust_email,
+        t.contact_phone as trust_phone
+      FROM application_approvals aa
+      JOIN trusts t ON aa.trust_user_id = t.user_id
+      WHERE aa.application_id = $1 AND aa.status = 'approved'
+      ORDER BY aa.approved_at DESC
     `, [appId])).rows;
+    
+    // Calculate total approved amount
+    const totalApproved = trustApprovals.reduce((sum, approval) => sum + parseFloat(approval.approved_amount || 0), 0);
     
     // Get KYC documents for this student
     const kycDocuments = (await db.query(`
@@ -293,7 +317,9 @@ router.get('/applications/:id', async (req, res) => {
       currentExpenses, 
       documents, 
       kycDocuments,
-      trustPayments
+      trustApprovals,
+      totalApproved,
+      remainingAmount: parseFloat(app.total_amount_requested || 0) - totalApproved
     });
   } catch (err) {
     console.error('get application error', err);
@@ -330,7 +356,12 @@ router.post('/applications/:appId/confirm/:approvalId', async (req, res) => {
     const app = (await db.query(`SELECT * FROM applications WHERE id=$1 AND student_user_id=$2`, [appId, userId])).rows[0];
     if (!app) return res.status(404).json({ error: 'Application not found' });
 
-    const upd = await db.query(`UPDATE application_approvals SET student_confirmed_receipt = true WHERE id=$1 AND application_id=$2 RETURNING *`, [approvalId, appId]);
+    const upd = await db.query(`
+      UPDATE application_approvals 
+      SET student_confirmed_receipt = true, student_confirmed_at = NOW() 
+      WHERE id=$1 AND application_id=$2 
+      RETURNING *
+    `, [approvalId, appId]);
     if (!upd.rows.length) return res.status(404).json({ error: 'Approval not found' });
 
     await db.query(`INSERT INTO audit_logs(user_id, action, details) VALUES($1,'student_confirm_receipt',$2)`, [

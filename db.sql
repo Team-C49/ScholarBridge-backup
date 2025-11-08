@@ -273,3 +273,29 @@ CREATE INDEX IF NOT EXISTS idx_documents_owner ON documents(owner_type, owner_id
 CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
 
 COMMIT;
+
+scholarbridge=# ALTER TABLE family_members ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE
+scholarbridge=# ALTER TABLE current_expenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE
+scholarbridge=# ALTER TABLE applications
+scholarbridge-# ADD COLUMN IF NOT EXISTS review_remarks TEXT,
+scholarbridge-# ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+scholarbridge-# ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users(id);
+
+-- Add created_at column to family_members table
+ALTER TABLE family_members ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Add created_at column to current_expenses table
+ALTER TABLE current_expenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE applications 
+ADD COLUMN IF NOT EXISTS review_remarks TEXT,
+ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users(id);
+
+-- Also add preferences column to trusts table if not exists
+ALTER TABLE trusts 
+ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb;
+
+ALTER TABLE application_approvals 
+ADD COLUMN IF NOT EXISTS student_confirmed_at TIMESTAMPTZ;

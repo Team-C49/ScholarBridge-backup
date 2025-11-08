@@ -294,6 +294,151 @@ export const adminApi = {
   }
 };
 
+// Trust API functions for authenticated trusts
+export const authenticatedTrustApi = {
+  // Get dashboard statistics
+  getDashboardStats: async () => {
+    try {
+      const response = await api.get('/trusts/dashboard/stats');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch dashboard statistics' };
+    }
+  },
+
+  // Get trust preferences
+  getPreferences: async () => {
+    try {
+      const response = await api.get('/trusts/me/preferences');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch preferences' };
+    }
+  },
+
+  // Update trust preferences
+  updatePreferences: async (preferences) => {
+    try {
+      const response = await api.put('/trusts/me/preferences', preferences);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to update preferences' };
+    }
+  },
+
+  // Get dashboard applications with Smart Filtering
+  getDashboardApplications: async (params = {}) => {
+    try {
+      const queryParams = new URLSearchParams(params);
+      const response = await api.get(`/trusts/dashboard/applications?${queryParams}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch applications' };
+    }
+  },
+
+  // Get single application details
+  getApplicationDetails: async (applicationId) => {
+    try {
+      const response = await api.get(`/trusts/application/${applicationId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch application details' };
+    }
+  },
+
+  // Approve or reject application
+  updateApplicationStatus: async (applicationId, status, approved_amount = 0, remarks = '') => {
+    try {
+      const response = await api.put(`/trusts/application/${applicationId}/status`, {
+        status,
+        approved_amount,
+        remarks
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to update application status' };
+    }
+  },
+
+  // Download application PDF
+  downloadApplicationPDF: async (applicationId) => {
+    try {
+      const response = await api.get(`/trusts/application/${applicationId}/pdf`, {
+        responseType: 'blob',
+      });
+
+      // Create blob link to download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `application-${applicationId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true };
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to download PDF' };
+    }
+  },
+
+  // Download complete application package
+  downloadCompletePackage: async (applicationId) => {
+    try {
+      const response = await api.get(`/trusts/application/${applicationId}/complete`, {
+        responseType: 'blob',
+      });
+
+      // Create blob link to download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `application-${applicationId}-complete.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true };
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to download complete package' };
+    }
+  },
+
+  // View document (for trust review)
+  viewDocument: async (documentId) => {
+    try {
+      // Open document in new tab with proper authorization
+      const token = localStorage.getItem('token');
+      
+      console.log('🔍 viewDocument Debug:');
+      console.log('  - Document ID:', documentId);
+      console.log('  - Token from localStorage:', token ? `${token.substring(0, 50)}...` : 'null');
+      console.log('  - API_BASE_URL:', API_BASE_URL);
+      
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+      
+      const documentUrl = `${API_BASE_URL}/trusts/documents/${documentId}/view?token=${encodeURIComponent(token)}`;
+      console.log('  - Full document URL:', documentUrl);
+      
+      const newTab = window.open(documentUrl, '_blank');
+      
+      if (!newTab) {
+        throw new Error('Popup blocked. Please allow popups for this site.');
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('❌ viewDocument error:', error);
+      throw error.response?.data || { error: 'Failed to view document' };
+    }
+  }
+};
+
 // Student API functions
 export const studentApi = {
   // Get student applications
@@ -436,15 +581,13 @@ export const studentApi = {
     }
   },
 
-  // Confirm trust payment
-  confirmTrustPayment: async (paymentId, confirmed) => {
+  // Confirm trust approval receipt
+  confirmTrustApproval: async (applicationId, approvalId) => {
     try {
-      const response = await api.put(`/student/trust-payments/${paymentId}/confirm`, {
-        confirmed: confirmed
-      });
+      const response = await api.post(`/student/applications/${applicationId}/confirm/${approvalId}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { error: 'Failed to update confirmation' };
+      throw error.response?.data || { error: 'Failed to confirm receipt' };
     }
   },
 
