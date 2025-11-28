@@ -1,57 +1,9 @@
-const puppeteer = require('puppeteer');
-const fs = require('fs').promises;
-const path = require('path');
 
-class PDFService {
-  async generateApplicationPDF(applicationData) {
-    let browser;
-    try {
-      browser = await puppeteer.launch({ 
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-      
-      const page = await browser.newPage();
-      
-      // Generate HTML content for the application
-      const htmlContent = this.generateHTMLTemplate(applicationData);
-      
-      await page.setContent(htmlContent, { 
-        waitUntil: 'networkidle0' 
-      });
-      
-      // Generate PDF
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: {
-          top: '1cm',
-          right: '1cm',
-          bottom: '1cm',
-          left: '1cm'
-        }
-      });
-      
-      return pdfBuffer;
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      throw new Error('Failed to generate PDF');
-    } finally {
-      if (browser) {
-        await browser.close();
-      }
-    }
-  }
-
-  generateHTMLTemplate(data) {
-    const { application, profile, educationHistory, familyMembers, currentExpenses, documents, kycDocuments, trustPayments } = data;
-    
-    return `
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Scholarship Application - ${application.academic_year}</title>
+        <title>Scholarship Application - 2025</title>
         <style>
             body { 
                 font-family: Arial, sans-serif; 
@@ -151,44 +103,44 @@ class PDFService {
     <body>
         <div class="header">
             <h1>Scholarship Application</h1>
-            <p>Academic Year: ${application.academic_year} | Status: ${application.status}</p>
-            <p>Submitted on: ${new Date(application.created_at).toLocaleDateString()}</p>
+            <p>Academic Year: 2025 | Status: closed</p>
+            <p>Submitted on: 26/11/2025</p>
         </div>
 
         <div class="section">
             <div class="section-title">Personal Information</div>
-            ${profile.profile_picture_url ? `<img src="${profile.profile_picture_url}" class="profile-pic" alt="Profile Picture">` : ''}
+            <img src="https://pub-50ee8ac0b2e64c08893c8e87292de49f.r2.dev/profile-pictures/4a81e801-03d4-47e7-a093-6465c2c4d6a8_mypic.jpg" class="profile-pic" alt="Profile Picture">
             <div class="info-grid">
                 <div>
                     <div class="info-item">
                         <span class="info-label">Full Name:</span>
-                        <span class="info-value">${profile.full_name || 'N/A'}</span>
+                        <span class="info-value">Mayur Dumbre</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Email:</span>
-                        <span class="info-value">${profile.email || 'N/A'}</span>
+                        <span class="info-value">mayur.d@somaiya.edu</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Date of Birth:</span>
-                        <span class="info-value">${profile.date_of_birth ? new Date(profile.date_of_birth).toLocaleDateString() : 'N/A'}</span>
+                        <span class="info-value">20/3/2004</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Gender:</span>
-                        <span class="info-value">${profile.gender || 'N/A'}</span>
+                        <span class="info-value">Male</span>
                     </div>
                 </div>
                 <div>
                     <div class="info-item">
                         <span class="info-label">Phone Number:</span>
-                        <span class="info-value">${profile.phone_number || 'N/A'}</span>
+                        <span class="info-value">9876543216</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Address:</span>
-                        <span class="info-value">${profile.address || 'N/A'}</span>
+                        <span class="info-value">BC NDF 23, Mumbai, Maharashtra</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Annual Income:</span>
-                        <span class="info-value">₹${profile.annual_income || 'N/A'}</span>
+                        <span class="info-value">₹700000</span>
                     </div>
                 </div>
             </div>
@@ -199,16 +151,16 @@ class PDFService {
             <div class="info-grid">
                 <div class="info-item">
                     <span class="info-label">College/School:</span>
-                    <span class="info-value">${application.school_college_name}</span>
+                    <span class="info-value">K.J. Somaiya College of Engineering</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Current Course:</span>
-                    <span class="info-value">${application.current_course_name}</span>
+                    <span class="info-value">B Tech CSE</span>
                 </div>
             </div>
         </div>
 
-        ${educationHistory.length > 0 ? `
+        
         <div class="section">
             <div class="section-title">Education History</div>
             <table class="table">
@@ -221,21 +173,28 @@ class PDFService {
                     </tr>
                 </thead>
                 <tbody>
-                    ${educationHistory.map(edu => `
+                    
                     <tr>
-                        <td>${edu.institution}</td>
-                        <td>${edu.course}</td>
-                        <td>${edu.year}</td>
-                        <td>${edu.percentage}%</td>
+                        <td>AEC D</td>
+                        <td>12th Science</td>
+                        <td>2022</td>
+                        <td>85%</td>
                     </tr>
-                    `).join('')}
+                    
+                    <tr>
+                        <td>ADC E</td>
+                        <td>10th</td>
+                        <td>2020</td>
+                        <td>90%</td>
+                    </tr>
+                    
                 </tbody>
             </table>
         </div>
-        ` : ''}
+        
 
 
-        ${familyMembers.length > 0 ? `
+        
         <div class="section">
             <div class="section-title">Family Members</div>
             <table class="table">
@@ -248,24 +207,31 @@ class PDFService {
                     </tr>
                 </thead>
                 <tbody>
-                    ${familyMembers.map(member => `
+                    
                     <tr>
-                        <td>${member.name}</td>
-                        <td>${member.relation}</td>
-                        <td>${member.occupation}</td>
-                        <td>₹${member.income}</td>
+                        <td>Vijay D</td>
+                        <td>father</td>
+                        <td>Job</td>
+                        <td>₹50000.00</td>
                     </tr>
-                    `).join('')}
+                    
+                    <tr>
+                        <td>Ju TD</td>
+                        <td>mother</td>
+                        <td>Job</td>
+                        <td>₹20000.00</td>
+                    </tr>
+                    
                 </tbody>
             </table>
             <div style="margin-top: 10px;">
                 <span class="info-label">Total Family Income: </span>
-                <span class="amount">₹${typeof totalFamilyIncome !== 'undefined' ? totalFamilyIncome : familyMembers.reduce((total, member) => total + (Number(member.income) || 0), 0)}</span>
+                <span class="amount">₹70000</span>
             </div>
         </div>
-        ` : ''}
+        
 
-        ${currentExpenses.length > 0 ? `
+        
         <div class="section">
             <div class="section-title">Current Expenses</div>
             <table class="table">
@@ -277,36 +243,42 @@ class PDFService {
                     </tr>
                 </thead>
                 <tbody>
-                    ${currentExpenses.map(expense => `
+                    
                     <tr>
-                        <td>${expense.expense_type}</td>
-                        <td>₹${expense.amount}</td>
-                        <td>${expense.description || 'N/A'}</td>
+                        <td>COLLEGE TUITION FEE</td>
+                        <td>₹400000.00</td>
+                        <td>N/A</td>
                     </tr>
-                    `).join('')}
+                    
+                    <tr>
+                        <td>HOSTEL FEE</td>
+                        <td>₹200000.00</td>
+                        <td>N/A</td>
+                    </tr>
+                    
                 </tbody>
             </table>
         </div>
-        ` : ''}
+        
 
         <div class="section">
             <div class="section-title">Bank Details</div>
             <div class="info-grid">
                 <div class="info-item">
                     <span class="info-label">Account Holder Name:</span>
-                    <span class="info-value">${profile.bank_account_holder_name || 'N/A'}</span>
+                    <span class="info-value">Mayur Dumbre</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Account Number:</span>
-                    <span class="info-value">${profile.bank_account_number || 'N/A'}</span>
+                    <span class="info-value">XXXX XXXX 2123</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Bank Name:</span>
-                    <span class="info-value">${profile.bank_name || 'N/A'}</span>
+                    <span class="info-value">BOI</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">IFSC Code:</span>
-                    <span class="info-value">${profile.bank_ifsc_code || 'N/A'}</span>
+                    <span class="info-value">BOIN0010133</span>
                 </div>
             </div>
         </div>
@@ -316,62 +288,86 @@ class PDFService {
             <div class="info-grid">
                 <div class="info-item">
                     <span class="info-label">Total Amount Requested:</span>
-                    <span class="amount">₹${application.total_amount_requested}</span>
+                    <span class="amount">₹600000.00</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Total Amount Received:</span>
-                    <span class="amount">₹${application.received_amount || 0}</span>
+                    <span class="amount">₹600000</span>
                 </div>
             </div>
         </div>
 
-        ${documents.length > 0 ? `
+        
         <div class="section">
             <div class="section-title">Application Documents</div>
             <ul class="document-list">
-                ${documents.map(doc => `
+                
                 <li class="document-item">
-                    <strong>${doc.doc_type}:</strong> ${doc.original_name || doc.description}
+                    <strong>application_marksheet:</strong> Activity 6 - C49.pdf
                 </li>
-                `).join('')}
+                
+                <li class="document-item">
+                    <strong>application_marksheet:</strong> Mod 1 2 3 4(with end GPT).pdf
+                </li>
+                
+                <li class="document-item">
+                    <strong>application_income_proof:</strong> COMP- SEM- VII (2).pdf
+                </li>
+                
+                <li class="document-item">
+                    <strong>application_income_proof:</strong> Work-Demo.pdf
+                </li>
+                
+                <li class="document-item">
+                    <strong>application_expense_proof:</strong> stipend_payment_proof.pdf
+                </li>
+                
+                <li class="document-item">
+                    <strong>application_expense_proof:</strong> COMP- SEM- V.pdf
+                </li>
+                
             </ul>
         </div>
-        ` : ''}
+        
 
-        ${kycDocuments && kycDocuments.length > 0 ? `
+        
         <div class="section">
             <div class="section-title">KYC Documents</div>
             <ul class="document-list">
-                ${kycDocuments.map(doc => `
+                
                 <li class="document-item">
-                    <strong>${doc.doc_type}:</strong> ${doc.original_name || doc.description}
+                    <strong>kyc_document:</strong> Activity 6 - C49.pdf
                 </li>
-                `).join('')}
+                
             </ul>
         </div>
-        ` : ''}
+        
 
-        ${trustPayments && trustPayments.length > 0 ? `
+        
         <div class="section">
             <div class="section-title">Trust Payments Received</div>
-            ${trustPayments.map(payment => `
+            
             <div class="trust-payment">
-                <div><strong>${payment.trust_name}</strong></div>
-                <div>Amount: <span class="amount">₹${payment.amount}</span></div>
-                <div>Payment Date: ${new Date(payment.payment_date).toLocaleDateString()}</div>
-                ${payment.reference_number ? `<div>Reference: ${payment.reference_number}</div>` : ''}
-                ${payment.remarks ? `<div>Remarks: ${payment.remarks}</div>` : ''}
+                <div><strong>MNS AB</strong></div>
+                <div>Amount: <span class="amount">₹200000.00</span></div>
+                <div>Payment Date: 26/11/2025</div>
+                
+                
             </div>
-            `).join('')}
+            
+            <div class="trust-payment">
+                <div><strong>ABCD</strong></div>
+                <div>Amount: <span class="amount">₹400000.00</span></div>
+                <div>Payment Date: 26/11/2025</div>
+                
+                
+            </div>
+            
             <div style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 4px solid #0ea5e9;">
-                <strong>Total Received: ₹${trustPayments.reduce((total, payment) => total + parseFloat(payment.amount), 0)}</strong>
+                <strong>Total Received: ₹600000</strong>
             </div>
         </div>
-        ` : ''}
+        
     </body>
     </html>
-    `;
-  }
-}
-
-module.exports = new PDFService();
+    

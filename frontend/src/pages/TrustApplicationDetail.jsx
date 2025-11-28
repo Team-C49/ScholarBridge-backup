@@ -24,11 +24,6 @@ const TrustApplicationDetail = () => {
 
   useEffect(() => {
     loadApplicationDetails();
-    
-    // Pre-fill approval amount if provided via URL
-    if (urlAmount && !approvalAmount) {
-      setApprovalAmount(urlAmount);
-    }
   }, [applicationId, urlAmount]);
 
   const loadApplicationDetails = async () => {
@@ -41,9 +36,21 @@ const TrustApplicationDetail = () => {
       
       setApplication(response.data);
       
-      // Set default approval amount to requested amount
+      // Set default approval amount to remaining amount (requested - received)
       if (response.data.application && !approvalAmount) {
-        setApprovalAmount(response.data.application.total_amount_requested || '');
+        const app = response.data.application;
+        const requested = parseFloat(app.total_amount_requested) || 0;
+        const approved = parseFloat(app.total_amount_approved || 0) || 0;
+        const received = parseFloat(app.received_amount || app.total_received || 0) || 0;
+        const already = Math.max(approved, received);
+        const remaining = Math.max(0, (parseFloat(app.remaining_amount) || (requested - already)));
+        // If URL supplied an amount, use it only if it's <= remaining, otherwise use remaining
+        if (urlAmount && Number(urlAmount) > 0) {
+          const urlVal = Number(urlAmount);
+          setApprovalAmount(urlVal <= remaining ? urlVal.toString() : remaining.toString());
+        } else {
+          setApprovalAmount(remaining.toString());
+        }
       }
       
     } catch (error) {
@@ -52,6 +59,15 @@ const TrustApplicationDetail = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getRemainingAmount = (app) => {
+    if (!app) return 0;
+    const requested = parseFloat(app.total_amount_requested) || 0;
+    const approved = parseFloat(app.total_amount_approved || 0) || 0;
+    const received = parseFloat(app.received_amount || app.total_received || 0) || 0;
+    const already = Math.max(approved, received);
+    return Math.max(0, (parseFloat(app.remaining_amount) || (requested - already)));
   };
 
   const handleApprove = async () => {
@@ -476,8 +492,8 @@ const TrustApplicationDetail = () => {
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Amount Requested:</span>
-                    <span className="font-medium">{formatCurrency(app.total_amount_requested)}</span>
+                    <span className="text-gray-600">Remaining Amount:</span>
+                    <span className="font-medium">{formatCurrency(getRemainingAmount(app))}</span>
                   </div>
                   {app.total_amount_approved > 0 && (
                     <div className="flex justify-between">
@@ -508,7 +524,9 @@ const TrustApplicationDetail = () => {
                       onChange={(e) => setApprovalAmount(e.target.value)}
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Enter amount"
+                      max={getRemainingAmount(app)}
                     />
+                    <p className="text-xs text-gray-500 mt-1">Maximum approvable: {formatCurrency(getRemainingAmount(app))}</p>
                   </div>
 
                   {/* Remarks */}

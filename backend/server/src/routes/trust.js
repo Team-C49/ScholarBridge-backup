@@ -1015,39 +1015,59 @@ router.put('/application/:applicationId/status', async (req, res) => {
     }
 
     if (status === 'approved') {
-      // Validate approved amount
-      if (!approved_amount || approved_amount <= 0) {
-        return res.status(400).json({ error: 'Approved amount must be greater than 0' });
+      // Use transactional path to ensure remaining amount validation
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Lock application row
+        const appRowRes = await client.query(`SELECT total_amount_requested, total_amount_approved, status FROM applications WHERE id=$1 FOR UPDATE`, [applicationId]);
+        if (!appRowRes.rows.length) {
+          await client.query('ROLLBACK');
+          client.release();
+          return res.status(404).json({ error: 'Application not found' });
+        }
+        const appRow = appRowRes.rows[0];
+        if (appRow.status === 'closed') {
+          await client.query('ROLLBACK');
+          client.release();
+          return res.status(400).json({ error: 'Application is closed' });
+        }
+
+        const requested = Number(appRow.total_amount_requested || 0);
+        const sumRes = await client.query(`SELECT COALESCE(SUM(approved_amount),0) AS s FROM application_approvals WHERE application_id=$1 AND status='approved'`, [applicationId]);
+        const existing = Number(sumRes.rows[0].s || 0);
+        const remaining = requested - existing;
+        if (Number(approved_amount) > remaining) {
+          await client.query('ROLLBACK');
+          client.release();
+          return res.status(400).json({ error: `Insufficient remaining amount. Remaining = ${remaining}` });
+        }
+
+        const approvalId = uuidv4();
+        const ins = `INSERT INTO application_approvals(id, application_id, trust_user_id, approved_amount, status, rejection_reason, student_confirmed_receipt, approved_at)
+                     VALUES($1,$2,$3,$4,'approved',NULL,false,now()) RETURNING *`;
+        const insRes = await client.query(ins, [approvalId, applicationId, trustUserId, approved_amount]);
+
+        // Check and auto-close application using server helper
+        const { closed, status: newStatus, totalApproved } = await checkAndAutoCloseApplication(applicationId);
+
+        await client.query('COMMIT');
+        client.release();
+
+        res.json({
+          message: 'Application approved successfully',
+          approval: insRes.rows[0],
+          applicationStatus: newStatus,
+          applicationClosed: closed,
+          totalApproved: totalApproved
+        });
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        client.release();
+        console.error('Error in transactional approval (PUT):', err);
+        return res.status(500).json({ error: 'Failed to approve application' });
       }
-
-      // Insert into application_approvals table
-      const insertQuery = `
-        INSERT INTO application_approvals (
-          application_id, 
-          trust_user_id, 
-          approved_amount, 
-          status,
-          approved_at
-        ) VALUES ($1, $2, $3, 'approved', NOW())
-        RETURNING *
-      `;
-
-      const { rows } = await db.query(insertQuery, [
-        applicationId,
-        trustUserId,
-        approved_amount
-      ]);
-
-      // Check if application should be auto-closed
-      const { closed, status: newStatus, totalApproved } = await checkAndAutoCloseApplication(applicationId);
-
-      res.json({
-        message: 'Application approved successfully',
-        approval: rows[0],
-        applicationStatus: newStatus,
-        applicationClosed: closed,
-        totalApproved: totalApproved
-      });
     } else {
       // For rejection, just add a rejection record
       const insertQuery = `
@@ -1199,6 +1219,16 @@ router.post('/applications/:id/approve', async (req, res) => {
     const ins = `INSERT INTO application_approvals(id, application_id, trust_user_id, approved_amount, status, rejection_reason, student_confirmed_receipt, approved_at)
                  VALUES($1,$2,$3,$4,'approved',NULL,false,now()) RETURNING *`;
     const insRes = await client.query(ins, [approvalId, appId, trustUserId, approved_amount]);
+
+    // Insert into trust_payments table
+    const trustNameRes = await client.query('SELECT org_name FROM trusts WHERE user_id = $1', [trustUserId]);
+    const trustName = trustNameRes.rows.length ? trustNameRes.rows[0].org_name : null;
+    const paymentId = uuidv4();
+    await client.query(
+      `INSERT INTO trust_payments (id, application_id, trust_user_id, trust_name, amount, payment_date, reference_number, remarks, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NULL, NULL, NOW(), NOW())`,
+      [paymentId, appId, trustUserId, trustName, approved_amount]
+    );
 
     const newSum = existing + Number(approved_amount);
     await client.query(`UPDATE applications SET total_amount_approved=$1, updated_at=now() WHERE id=$2`, [newSum, appId]);

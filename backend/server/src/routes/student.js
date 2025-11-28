@@ -556,17 +556,69 @@ router.get('/applications/:id/pdf', async (req, res) => {
       WHERE owner_type='student' AND owner_id=$1 AND doc_type='kyc_document'
     `, [userId])).rows;
 
-    // Generate PDF
+
+    // Debug: Log application and trustPayments
+    console.log('PDF DEBUG - application:', app);
+    console.log('PDF DEBUG - trustPayments:', trustPayments);
+
+    // Patch for PDF fields (try all possible keys)
+    app.school_college_name = app.school_college_name || app.college_school || app.college_name || app.school_name || app.institution_name || '';
+    app.current_course_name = app.current_course_name || app.current_course || app.course_name || app.program_name || '';
+    app.total_amount_requested = app.total_amount_requested || app.amount_requested || app.amount || app.total_amount || 0;
+    // Use received_amount from application if present and > 0, else sum trustPayments
+    let receivedAmount = 0;
+    if (app.received_amount && !isNaN(parseFloat(app.received_amount)) && parseFloat(app.received_amount) > 0) {
+      receivedAmount = parseFloat(app.received_amount);
+    } else if (Array.isArray(trustPayments)) {
+      receivedAmount = trustPayments.reduce((total, payment) => total + parseFloat(payment.amount || 0), 0);
+    }
+    app.received_amount = receivedAmount;
+
+    // Build safe mapped data for PDF (handle old/new field names)
+    const safeEducationHistory = (educationHistory || []).map(edu => ({
+      institution: edu.institution || edu.institution_name || 'N/A',
+      course: edu.course || edu.qualification || 'N/A',
+      year: edu.year || edu.year_of_passing || 'N/A',
+      percentage: edu.percentage || edu.grade || 'N/A'
+    }));
+
+    const safeFamilyMembers = (familyMembers || []).map(member => ({
+      name: member.name || member.member_name || 'N/A',
+      relation: member.relation || 'N/A',
+      occupation: member.occupation || 'N/A',
+      income: member.income !== undefined && member.income !== null ? member.income : (member.monthly_income !== undefined && member.monthly_income !== null ? member.monthly_income : 'N/A')
+    }));
+
+    const totalFamilyIncome = safeFamilyMembers.reduce((sum, m) => sum + (Number(m.income) || 0), 0);
+
+    const safeCurrentExpenses = (currentExpenses || []).map(expense => ({
+      expense_type: expense.expense_type || expense.expense_name || 'N/A',
+      amount: expense.amount !== undefined && expense.amount !== null ? expense.amount : 'N/A',
+      description: expense.description || 'N/A'
+    }));
+
+    // Ensure profile address is string
+    if (profile && typeof profile.address === 'object' && profile.address !== null) {
+      profile.address = [profile.address.line1, profile.address.line2, profile.address.city, profile.address.state, profile.address.pincode].filter(Boolean).join(', ');
+    }
+
     const applicationData = {
       application: app,
       profile,
-      educationHistory,
-      familyMembers,
-      currentExpenses,
+      educationHistory: safeEducationHistory,
+      familyMembers: safeFamilyMembers,
+      totalFamilyIncome,
+      currentExpenses: safeCurrentExpenses,
       documents,
       kycDocuments,
       trustPayments
     };
+
+    // Debug: log the data being passed to PDF generator
+    console.log('PDF DEBUG - applicationData keys:', Object.keys(applicationData));
+    console.log('PDF DEBUG - sample educationHistory:', safeEducationHistory.slice(0,3));
+    console.log('PDF DEBUG - sample familyMembers:', safeFamilyMembers.slice(0,3));
+    console.log('PDF DEBUG - sample currentExpenses:', safeCurrentExpenses.slice(0,3));
 
     const pdfBuffer = await pdfService.generateApplicationPDF(applicationData);
     
@@ -685,16 +737,107 @@ router.get('/applications/:id/download-complete', async (req, res) => {
 
     // Generate PDF
     console.log('Generating complete package for app:', appId);
-    const applicationData = {
-      application: app,
-      profile,
-      educationHistory,
-      familyMembers,
-      currentExpenses,
-      documents,
-      kycDocuments,
-      trustPayments
-    };
+    // Patch for PDF fields
+    app.school_college_name = app.school_college_name || app.college_school || app.college_name || app.school_name || 'N/A';
+    app.current_course_name = app.current_course_name || app.current_course || app.course_name || 'N/A';
+    app.total_amount_requested = app.total_amount_requested || app.amount_requested || app.amount || 0;
+    // Calculate received_amount from trustPayments
+    const receivedAmount = trustPayments.reduce((total, payment) => total + parseFloat(payment.amount || 0), 0);
+    app.received_amount = receivedAmount;
+    // Ensure profile data is normalized
+    let finalProfile = profile;
+    if (!finalProfile || Object.keys(finalProfile).length === 0) {
+      // fallback to application_snapshot.profile if available
+      if (app.application_snapshot && app.application_snapshot.profile) {
+        finalProfile = app.application_snapshot.profile;
+      } else {
+        finalProfile = {};
+      }
+    }
+    // Normalize all fields
+    if (finalProfile) {
+      // Address: stringify if object or JSON
+      if (finalProfile.address) {
+        if (typeof finalProfile.address === 'object') {
+          finalProfile.address = Object.values(finalProfile.address).filter(Boolean).join(', ') || 'N/A';
+        } else if (typeof finalProfile.address === 'string') {
+          try {
+            const addrObj = JSON.parse(finalProfile.address);
+            if (addrObj && typeof addrObj === 'object') {
+              finalProfile.address = Object.values(addrObj).filter(Boolean).join(', ') || 'N/A';
+            }
+          } catch (e) {
+            // Not JSON, use as is
+          }
+        }
+      } else {
+        finalProfile.address = 'N/A';
+      }
+      // Annual income
+      finalProfile.annual_income = finalProfile.annual_income || finalProfile.income || finalProfile.total_income || 'N/A';
+      // Bank details
+      if (finalProfile.bank_details_masked && typeof finalProfile.bank_details_masked === 'object') {
+        finalProfile.bank_account_holder_name = finalProfile.bank_details_masked.account_holder_name || 'N/A';
+        finalProfile.bank_account_number = finalProfile.bank_details_masked.account_number || 'N/A';
+        finalProfile.bank_name = finalProfile.bank_details_masked.bank_name || 'N/A';
+        finalProfile.bank_ifsc_code = finalProfile.bank_details_masked.ifsc_code || 'N/A';
+      } else {
+        finalProfile.bank_account_holder_name = finalProfile.bank_account_holder_name || 'N/A';
+        finalProfile.bank_account_number = finalProfile.bank_account_number || 'N/A';
+        finalProfile.bank_name = finalProfile.bank_name || 'N/A';
+        finalProfile.bank_ifsc_code = finalProfile.bank_ifsc_code || 'N/A';
+      }
+      // Fill other fields with N/A if missing
+      finalProfile.full_name = finalProfile.full_name || 'N/A';
+      finalProfile.email = finalProfile.email || 'N/A';
+      finalProfile.phone_number = finalProfile.phone_number || 'N/A';
+      finalProfile.date_of_birth = finalProfile.date_of_birth || 'N/A';
+      finalProfile.gender = finalProfile.gender || 'N/A';
+      finalProfile.profile_picture_url = finalProfile.profile_picture_url || '';
+    }
+
+
+        // Patch education history (dynamic mapping, new field names)
+        const safeEducationHistory = (educationHistory || []).map(edu => ({
+          institution: edu.institution || edu.institution_name || 'N/A',
+          course: edu.course || edu.qualification || 'N/A',
+          year: edu.year || edu.year_of_passing || 'N/A',
+          percentage: edu.percentage || edu.grade || 'N/A',
+        }));
+
+        // Patch family members (dynamic mapping, new field names)
+        const safeFamilyMembers = (familyMembers || []).map(member => ({
+          name: member.name || 'N/A',
+          relation: member.relation || 'N/A',
+          occupation: member.occupation || 'N/A',
+          income: member.income !== undefined && member.income !== null ? member.income : (member.monthly_income !== undefined && member.monthly_income !== null ? member.monthly_income : 'N/A'),
+        }));
+        // Calculate total family income using only numeric values
+        const totalFamilyIncome = safeFamilyMembers.reduce((sum, member) => sum + (Number(member.income) || 0), 0);
+
+        // Patch current expenses (dynamic mapping, new field names)
+        const safeCurrentExpenses = (currentExpenses || []).map(expense => ({
+          expense_type: expense.expense_type || expense.expense_name || 'N/A',
+          amount: expense.amount !== undefined && expense.amount !== null ? expense.amount : 'N/A',
+          description: expense.description || 'N/A',
+        }));
+
+        // Always stringify address for PDF
+        if (profile && typeof profile.address === 'object' && profile.address !== null) {
+          profile.address = [profile.address.line1, profile.address.line2, profile.address.city, profile.address.state, profile.address.pincode].filter(Boolean).join(', ');
+        }
+
+        const applicationData = {
+          application: app,
+          profile,
+          educationHistory: safeEducationHistory,
+          familyMembers: safeFamilyMembers,
+          totalFamilyIncome,
+          currentExpenses: safeCurrentExpenses,
+          documents,
+          kycDocuments,
+          trustPayments
+        };
 
     console.log('Generating PDF...');
     const pdfBuffer = await pdfService.generateApplicationPDF(applicationData);

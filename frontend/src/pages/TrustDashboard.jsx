@@ -206,13 +206,26 @@ const TrustDashboard = () => {
     }).format(amount || 0);
   };
 
+  const getRemainingAmount = (application) => {
+    if (!application) return 0;
+    const requested = parseFloat(application.total_amount_requested) || 0;
+    // Prefer server-calculated approved total when present
+    const approved = parseFloat(application.total_amount_approved || application.total_amount_approved_by_trust || 0) || 0;
+    // fallback to any received_amount/total_received fields
+    const received = parseFloat(application.received_amount || application.total_received || 0) || 0;
+    const already = Math.max(approved, received);
+    return Math.max(0, (parseFloat(application.remaining_amount) || (requested - already)));
+  };
+
   const handleViewApplication = (applicationId) => {
     navigate(`/trust/application/${applicationId}`);
   };
 
   const handleOpenApproveModal = (application) => {
     setSelectedApplication(application);
-    setApprovalAmount(application.total_amount_requested.toString());
+    // compute remaining using helper (prefers server-calculated approved total)
+    const remaining = getRemainingAmount(application);
+    setApprovalAmount(remaining.toString());
     setRemarks('');
     setShowApproveModal(true);
   };
@@ -239,6 +252,13 @@ const TrustDashboard = () => {
     }
 
     if (!selectedApplication) return;
+
+    // Ensure approval does not exceed remaining amount (use helper)
+    const remaining = getRemainingAmount(selectedApplication);
+    if (Number(approvalAmount) > remaining) {
+      setError('Approval amount cannot exceed remaining amount: ' + remaining);
+      return;
+    }
 
     try {
       setProcessing(true);
@@ -646,7 +666,7 @@ const TrustDashboard = () => {
                 Student: <span className="font-medium text-gray-900">{selectedApplication.full_name}</span>
               </p>
               <p className="text-sm text-gray-600 mb-4">
-                Requested Amount: <span className="font-medium text-gray-900">{formatCurrency(selectedApplication.total_amount_requested)}</span>
+                Remaining Amount: <span className="font-medium text-gray-900">{formatCurrency(getRemainingAmount(selectedApplication))}</span>
               </p>
             </div>
 
@@ -668,7 +688,9 @@ const TrustDashboard = () => {
                 onChange={(e) => setApprovalAmount(e.target.value)}
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
                 placeholder="Enter approved amount"
+                max={getRemainingAmount(selectedApplication)}
               />
+              <p className="text-xs text-gray-500 mt-1">Maximum approvable: {formatCurrency(getRemainingAmount(selectedApplication))}</p>
             </div>
 
             <div className="mb-6">

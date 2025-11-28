@@ -349,8 +349,19 @@ export const authenticatedTrustApi = {
   },
 
   // Approve or reject application
+  // NOTE: approvals must go through the transactional POST endpoint to enforce remaining-amount checks server-side.
   updateApplicationStatus: async (applicationId, status, approved_amount = 0, remarks = '') => {
     try {
+      if (status === 'approved') {
+        // Use transactional approve endpoint which validates remaining amount atomically
+        const response = await api.post(`/trusts/applications/${applicationId}/approve`, {
+          approved_amount,
+          approval_note: remarks
+        });
+        return response.data;
+      }
+
+      // For non-approval status updates (e.g., 'rejected'), keep using the status PUT
       const response = await api.put(`/trusts/application/${applicationId}/status`, {
         status,
         approved_amount,

@@ -123,13 +123,7 @@ const StudentApplicationsDashboard = () => {
                   <p className="text-gray-600 mt-1">Manage and view your scholarship applications</p>
                 </div>
               </div>
-              <button
-                onClick={() => navigate('/student/application/new')}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-                <span>New Application</span>
-              </button>
+              {/* Remove New Application button from header */}
             </div>
           </div>
         </div>
