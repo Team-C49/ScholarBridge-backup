@@ -38,6 +38,7 @@ const TrustDashboard = () => {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [showFiltered, setShowFiltered] = useState(true); // Smart filtering toggle
+  const [searchQuery, setSearchQuery] = useState(''); // Search by name/email/phone
   const [stats, setStats] = useState({
     total: 0,
     approved: 0,
@@ -127,6 +128,30 @@ const TrustDashboard = () => {
       console.error('❌ Failed to load applications:', error);
       throw error;
     }
+  };
+
+  const matchesSearch = (application, q) => {
+    if (!q) return true;
+    const s = q.trim().toLowerCase();
+    const fields = [
+      application.full_name,
+      application.student_email,
+      application.email,
+      application.phone_number,
+      application.phone,
+      application.mobile,
+      application.contact_number,
+      application.student_phone,
+      application.mobile_number
+    ];
+    return fields.some(f => {
+      if (f === undefined || f === null) return false;
+      try {
+        return String(f).toLowerCase().includes(s);
+      } catch (e) {
+        return false;
+      }
+    });
   };
 
   const handleLoadError = (error) => {
@@ -332,6 +357,9 @@ const TrustDashboard = () => {
     );
   }
 
+  // Apply client-side search filtering (works alongside smart filtering)
+  const displayedApplications = (applications || []).filter(app => matchesSearch(app, searchQuery));
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -378,6 +406,20 @@ const TrustDashboard = () => {
                   <span>Logout</span>
                 </button>
               </div>
+            </div>
+
+            {/* Search box (by name / email / phone) */}
+            <div className="mt-4">
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by student name, email or phone"
+                className="w-full md:w-1/2 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+              {searchQuery && (
+                <div className="text-xs text-gray-500 mt-1">Showing results for "<span className="font-medium">{searchQuery}</span>"</div>
+              )}
             </div>
           </div>
         </div>
@@ -516,7 +558,7 @@ const TrustDashboard = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
               <p className="mt-2 text-gray-600">Loading applications...</p>
             </div>
-          ) : applications.length === 0 ? (
+          ) : displayedApplications.length === 0 ? (
             <div className="p-12 text-center">
               <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Applications Found</h3>
@@ -555,7 +597,7 @@ const TrustDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {applications.map((application) => (
+                  {displayedApplications.map((application) => (
                     <tr key={application.application_id} className="hover:bg-gray-50">
                       {showFiltered && activeTab === 'all' && (
                         <td className="px-6 py-4 whitespace-nowrap">
