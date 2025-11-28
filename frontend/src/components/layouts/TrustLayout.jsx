@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import TrustDashboard from '../../pages/TrustDashboard';
 import TrustPreferencesPage from '../../pages/TrustPreferencesPage';
 import TrustApplicationDetail from '../../pages/TrustApplicationDetail';
+import TrustProfile from '../../pages/TrustProfile';
 
 const TrustLayout = () => {
   return (
@@ -11,6 +12,7 @@ const TrustLayout = () => {
         <Route path="/dashboard" element={<TrustDashboard />} />
         <Route path="/preferences" element={<TrustPreferencesPage />} />
         <Route path="/application/:applicationId" element={<TrustApplicationDetail />} />
+        <Route path="/my-profile" element={<TrustProfile />} />
         <Route path="/" element={<Navigate to="/trust/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/trust/dashboard" replace />} />
       </Routes>

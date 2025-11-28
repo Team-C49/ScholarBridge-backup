@@ -1,9 +1,54 @@
-// src/routes/trust.js
+// ...existing code...
 const express = require('express');
 const router = express.Router();
 const db = require('../utils/db'); // Pool
 const { v4: uuidv4 } = require('uuid');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+
+// Trust profile: get current trust's details
+router.get('/profile', authMiddleware, requireRole('trust'), async (req, res) => {
+  try {
+    const trustUserId = req.user.id;
+    const { rows } = await db.query(
+      `SELECT user_id, org_name, contact_phone, contact_email, website, year_established, registration_number, is_active, verified, created_at, address
+       FROM trusts WHERE user_id = $1`,
+      [trustUserId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Trust not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Error fetching trust profile:', err);
+    res.status(500).json({ error: 'Failed to fetch trust profile' });
+  }
+});
+
+// Trust change password
+router.post('/change-password', authMiddleware, requireRole('trust'), async (req, res) => {
+  try {
+    const trustUserId = req.user.id;
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Old and new password required' });
+
+    // Get user record (password_hash column)
+    const userRes = await db.query('SELECT id, password_hash FROM users WHERE id = $1', [trustUserId]);
+    if (!userRes.rows.length) return res.status(404).json({ error: 'User not found' });
+    const user = userRes.rows[0];
+
+    // Compare old password
+    const { comparePassword, hashPassword } = require('../utils/hash');
+    const match = await comparePassword(oldPassword, user.password_hash);
+    if (!match) return res.status(400).json({ message: 'Old password is incorrect' });
+
+    // Hash and update new password
+    const newHash = await hashPassword(newPassword);
+    await db.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, trustUserId]);
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('Error changing trust password:', err);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
 
 /**
  * Utility function: Check if an application should be auto-closed

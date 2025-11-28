@@ -1,3 +1,4 @@
+// ...existing code...
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
@@ -437,8 +438,28 @@ export const authenticatedTrustApi = {
       throw error.response?.data || { error: 'Failed to view document' };
     }
   }
-};
+  ,
+  // Get trust profile
+  getProfile: async () => {
+    try {
+      const response = await api.get('/trusts/profile');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to fetch trust profile' };
+    }
+  },
 
+  // Change trust password
+  changePassword: async ({ oldPassword, newPassword }) => {
+    try {
+      const response = await api.post('/trusts/change-password', { oldPassword, newPassword });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Failed to change password' };
+    }
+  }
+
+};
 // Student API functions
 export const studentApi = {
   // Get student applications
@@ -616,3 +637,4 @@ export const studentApi = {
 };
 
 export { api };
+

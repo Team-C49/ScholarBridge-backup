@@ -340,11 +340,22 @@ const TrustDashboard = () => {
                   <span>Preferences</span>
                 </button>
                 <button
-                  onClick={() => navigate('/trust/profile')}
+                  onClick={() => navigate('/trust/my-profile')}
                   className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                 >
                   <User className="w-5 h-5" />
                   <span>View Profile</span>
+                </button>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('token');
+                    navigate('/');
+                  }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  title="Logout"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h4a2 2 0 012 2v1" /></svg>
+                  <span>Logout</span>
                 </button>
               </div>
             </div>
