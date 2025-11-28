@@ -240,25 +240,68 @@ class ZipService {
       [applicationId]
     )).rows;
 
-    // Prepare data for PDF generation (matching student route structure)
+    // Prepare data for PDF generation (normalize to match student route structure)
     const profile = {
-      full_name: application.full_name,
-      phone_number: application.phone_number,
-      date_of_birth: application.date_of_birth,
-      gender: application.gender,
+      full_name: application.full_name || application.student_full_name || null,
+      phone_number: application.phone_number || application.student_phone || null,
+      date_of_birth: application.date_of_birth || application.student_dob || null,
+      gender: application.gender || application.student_gender || null,
       address: application.address,
-      profile_picture_url: application.profile_picture_url,
-      kyc_doc_type: application.kyc_doc_type,
+      profile_picture_url: application.profile_picture_url || application.student_profile_picture_url || null,
+      kyc_doc_type: application.kyc_doc_type || null,
       email: application.student_email,
       user_id: studentUserId
     };
 
+    // Build safe mapped data for PDF (handle old/new field names)
+    const safeEducationHistory = (educationHistory || []).map(edu => ({
+      institution: edu.institution || edu.institution_name || 'N/A',
+      course: edu.course || edu.qualification || 'N/A',
+      year: edu.year || edu.year_of_passing || 'N/A',
+      percentage: edu.percentage || edu.grade || 'N/A'
+    }));
+
+    const safeFamilyMembers = (familyMembers || []).map(member => ({
+      name: member.name || member.member_name || 'N/A',
+      relation: member.relation || 'N/A',
+      occupation: member.occupation || 'N/A',
+      income: member.income !== undefined && member.income !== null ? member.income : (member.monthly_income !== undefined && member.monthly_income !== null ? member.monthly_income : 'N/A')
+    }));
+
+    const totalFamilyIncome = safeFamilyMembers.reduce((sum, m) => sum + (Number(m.income) || 0), 0);
+
+    const safeCurrentExpenses = (currentExpenses || []).map(expense => ({
+      expense_type: expense.expense_type || expense.expense_name || 'N/A',
+      amount: expense.amount !== undefined && expense.amount !== null ? expense.amount : 'N/A',
+      description: expense.description || 'N/A'
+    }));
+
+    // Ensure profile address is string
+    if (profile && typeof profile.address === 'object' && profile.address !== null) {
+      profile.address = [profile.address.line1, profile.address.line2, profile.address.city, profile.address.state, profile.address.pincode].filter(Boolean).join(', ');
+    }
+
+    // Normalise some application top-level fields used by the template
+    application.school_college_name = application.school_college_name || application.college_school || application.college_name || application.school_name || application.institution_name || '';
+    application.current_course_name = application.current_course_name || application.current_course || application.course_name || application.program_name || '';
+    application.total_amount_requested = application.total_amount_requested || application.amount_requested || application.amount || application.total_amount || 0;
+
+    // Compute received amount: prefer stored received_amount, else sum of trustPayments
+    let receivedAmount = 0;
+    if (application.received_amount && !isNaN(parseFloat(application.received_amount)) && parseFloat(application.received_amount) > 0) {
+      receivedAmount = parseFloat(application.received_amount);
+    } else if (Array.isArray(trustPayments)) {
+      receivedAmount = trustPayments.reduce((total, payment) => total + parseFloat(payment.amount || 0), 0);
+    }
+    application.received_amount = receivedAmount;
+
     const applicationData = {
       application,
       profile,
-      educationHistory,
-      familyMembers,
-      currentExpenses,
+      educationHistory: safeEducationHistory,
+      familyMembers: safeFamilyMembers,
+      totalFamilyIncome,
+      currentExpenses: safeCurrentExpenses,
       documents: docsResult.rows.filter(d => d.source_type === 'application'),
       kycDocuments: docsResult.rows.filter(d => d.source_type === 'kyc'),
       trustPayments
