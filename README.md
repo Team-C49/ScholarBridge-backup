@@ -29,17 +29,6 @@ ScholarBridge is a full-stack web platform designed to connect students with sch
 - `frontend/` - React.js client app (Vite + Tailwind CSS)
 - `docs/` - Documentation and setup guides
 
-## Setup Guide
-
-See `SETUP_GUIDE.md` for step-by-step installation and environment configuration.
-
-## Documentation
-
-- [Smart Filtering Algorithm](docs/smart-filtering-algorithm.md)
-- [Cloudflare R2 Integration](docs/cloudflare-r2-integration.md)
-- [Document Management System](docs/document-management-system.md)
-- [Quick R2 Setup](docs/r2-quick-setup.md)
-
 ## Key Endpoints
 
 - `/api/auth/login` - User login (JWT)
