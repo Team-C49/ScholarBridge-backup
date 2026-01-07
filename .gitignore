@@ -84,3 +84,4 @@ Thumbs.db
 server/logs/
 server/uploads/
 server/temp/
+.vercel
