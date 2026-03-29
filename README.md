@@ -38,6 +38,54 @@ ScholarBridge is a full-stack web platform designed to connect students with sch
 - `/api/trusts/change-password` - Change trust password
 - `/api/student/applications` - Student application management
 
+## How to run
+
+```
+Terminal-1:
+
+cd backend/server
+npm i
+node server.js
+
+Terminal-2:
+
+cd frontend
+npm i
+npm run dev
+```
+
+`.env` file template (inside `backend/server`) :
+```
+PORT=4000
+DATABASE_URL=
+
+JWT_SECRET=
+JWT_EXPIRES_IN=
+
+ENCRYPTION_KEY_BASE64=
+
+# .env
+NODE_ENV=development            # or production if you want, careful with fallback behavior
+MAIL_FROM=""
+
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+
+APP_NAME=ScholarBridge
+
+# Cloudflare R2 Configuration
+# Replace these with your actual CloudFlare R2 credentials
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=
+R2_ENDPOINT=
+R2_PUBLIC_DOMAIN=
+```
+
+
 ## Security
 
 - Passwords are hashed using bcrypt and stored as `password_hash` in the database
