@@ -16,7 +16,7 @@
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "express-rate-limit": "^8.5.1",
-    "js-cookie": "^3.0.5",
+    "js-cookie": "^3.0.7",
     "jsonwebtoken": "^9.0.2",
     "next": "15.5.18",
     "nodemailer": "^8.0.5",
