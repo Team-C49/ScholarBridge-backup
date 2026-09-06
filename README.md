@@ -14,6 +14,7 @@ ScholarBridge is a full-stack web platform designed to connect students with sch
 ## Features
 
 - Student registration, login, and application submission
+- Dark & light mode compatibility on the frontend
 - Trust/NGO registration, login, and dashboard
 - Multi-trust approval system for scholarship applications
 - Smart Filtering: Trusts see only applications matching their preferences
