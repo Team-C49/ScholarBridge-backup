@@ -13,6 +13,92 @@
   --bg-white: #ffffff;
 }
 
+/* App-wide theme tokens. The `dark` class is set from the saved preference (or
+   the device preference on a first visit), so every route uses the same mode. */
+html {
+  color-scheme: light;
+  background: #f9fafb;
+}
+
+html.dark {
+  color-scheme: dark;
+  background: #111827;
+}
+
+html.dark body,
+html.dark #root {
+  background: #111827;
+  color: #e5e7eb;
+}
+
+/* Existing Tailwind utility classes are used throughout the forms and
+   dashboards. These scoped overrides preserve their markup while making all
+   public and authenticated pages readable in dark mode. */
+html.dark .bg-white { background-color: #1f2937; }
+html.dark .bg-gray-50 { background-color: #111827; }
+html.dark .bg-gray-100 { background-color: #263244; }
+html.dark .bg-gray-200 { background-color: #374151; }
+html.dark .bg-green-50 { background-color: #10251d; }
+html.dark .bg-blue-50 { background-color: #111f35; }
+html.dark .bg-purple-50 { background-color: #201632; }
+html.dark .from-green-50 { --tw-gradient-from: #10251d; }
+html.dark .to-blue-50 { --tw-gradient-to: #111f35; }
+html.dark .via-blue-50 { --tw-gradient-via: #17243a; }
+html.dark .to-purple-50 { --tw-gradient-to: #201632; }
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300 { border-color: #475569; }
+html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: #475569; }
+html.dark .text-gray-900,
+html.dark .text-gray-800 { color: #f8fafc; }
+html.dark .text-gray-700 { color: #e2e8f0; }
+html.dark .text-gray-600 { color: #cbd5e1; }
+html.dark .text-gray-500 { color: #94a3b8; }
+html.dark .text-gray-400,
+html.dark .text-gray-300 { color: #94a3b8; }
+html.dark input,
+html.dark select,
+html.dark textarea { background-color: #1f2937; color: #f8fafc; border-color: #475569; }
+html.dark input::placeholder,
+html.dark textarea::placeholder { color: #94a3b8; }
+
+/* Landing-page inline styles consume these variables so its richer cards and
+   gradients switch modes too, without changing its layout. */
+.home-page {
+  --home-surface: #fafbf8;
+  --home-surface-alt: #f0fdf4;
+  --home-card: #ffffff;
+  --home-card-gradient: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+  --home-feature-gradient: linear-gradient(135deg, rgba(255,255,255,.8) 0%, rgba(240,253,250,.6) 100%);
+  --home-heading: #111827;
+  --home-copy: #4b5563;
+  --home-muted: #6b7280;
+  --home-faint: #9ca3af;
+  --home-nav: #ffffff;
+  --home-border: #d1fae5;
+}
+
+html.dark .home-page {
+  --home-surface: #111827;
+  --home-surface-alt: #10251d;
+  --home-card: #1f2937;
+  --home-card-gradient: linear-gradient(135deg, #1f2937 0%, #172d26 100%);
+  --home-feature-gradient: linear-gradient(135deg, rgba(31,41,55,.96) 0%, rgba(23,45,38,.9) 100%);
+  --home-heading: #f8fafc;
+  --home-copy: #cbd5e1;
+  --home-muted: #aebed1;
+  --home-faint: #94a3b8;
+  --home-nav: #1f2937;
+  --home-border: #285443;
+}
+
+.theme-toggle {
+  color: var(--home-copy);
+  background: transparent;
+  border: 1px solid var(--home-border);
+}
+.theme-toggle:hover { background: var(--home-surface-alt); }
+
 /* Custom color classes */
 .bg-custom-dark-green {
   background-color: #3E7C00;

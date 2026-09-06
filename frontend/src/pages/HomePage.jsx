@@ -1,9 +1,18 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
+import { Moon, Sun } from 'lucide-react';
 
 const HomePage = () => {
   const [activeStage, setActiveStage] = React.useState(0);
+  const [isDark, setIsDark] = React.useState(() => document.documentElement.classList.contains('dark'));
+
+  const toggleTheme = () => {
+    const nextIsDark = !isDark;
+    document.documentElement.classList.toggle('dark', nextIsDark);
+    localStorage.setItem('scholarbridge-theme', nextIsDark ? 'dark' : 'light');
+    setIsDark(nextIsDark);
+  };
 
   // Auto-cycle through pipeline stages
   React.useEffect(() => {
@@ -33,9 +42,9 @@ const HomePage = () => {
 
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#fafbf8' }}>
+    <div className="home-page min-h-screen" style={{ backgroundColor: 'var(--home-surface)' }}>
       {/* Navigation */}
-      <nav className="bg-white shadow-sm border-b border-gray-100">
+      <nav className="shadow-sm border-b" style={{ backgroundColor: 'var(--home-nav)', borderColor: 'var(--home-border)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
@@ -43,16 +52,26 @@ const HomePage = () => {
             </div>
             <div className="hidden md:block">
               <div className="ml-10 flex items-baseline space-x-8">
-                <a href="#home" className="text-gray-900 hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors">Home</a>
-                <a href="#features" className="text-gray-700 hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors">Features</a>
-                <a href="#about" className="text-gray-700 hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors">About</a>
-                <a href="#contact" className="text-gray-700 hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors">Contact</a>
+                <a href="#home" className="hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors" style={{ color: 'var(--home-heading)' }}>Home</a>
+                <a href="#features" className="hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors" style={{ color: 'var(--home-copy)' }}>Features</a>
+                <a href="#about" className="hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors" style={{ color: 'var(--home-copy)' }}>About</a>
+                <a href="#contact" className="hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors" style={{ color: 'var(--home-copy)' }}>Contact</a>
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="theme-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors"
+                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {isDark ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
               <Link
                 to="/login"
-                className="text-gray-700 hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors"
+                className="hover:text-green-600 px-3 py-2 text-sm font-medium transition-colors"
+                style={{ color: 'var(--home-copy)' }}
               >
                 Sign In
               </Link>
@@ -69,7 +88,7 @@ const HomePage = () => {
       </nav>
 
       {/* Hero Section */}
-      <section id="home" className="py-20" style={{ backgroundColor: '#fafbf8' }}>
+      <section id="home" className="py-20" style={{ backgroundColor: 'var(--home-surface)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             {/* Left Content */}
@@ -83,7 +102,7 @@ const HomePage = () => {
                   fontSize: 'clamp(2rem, 6vw, 3rem)',
                   fontWeight: 700,
                   lineHeight: 1.2,
-                  color: '#111827',
+                  color: 'var(--home-heading)',
                   letterSpacing: '-1px'
                 }}
               >
@@ -100,7 +119,7 @@ const HomePage = () => {
                 style={{
                   fontSize: '1.05rem',
                   fontWeight: 400,
-                  color: '#374151',
+                  color: 'var(--home-copy)',
                   lineHeight: 1.8,
                   letterSpacing: '0.3px'
                 }}
@@ -130,7 +149,7 @@ const HomePage = () => {
                   style={{
                     borderColor: '#10b981',
                     color: '#10b981',
-                    backgroundColor: 'white'
+                    backgroundColor: 'var(--home-card)'
                   }}
                 >
                   Partner With Us
@@ -145,7 +164,7 @@ const HomePage = () => {
               transition={{ duration: 0.8, delay: 0.3 }}
               className="rounded-2xl overflow-hidden shadow-2xl border"
               style={{
-                background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)',
+                background: 'var(--home-card-gradient)',
                 border: '1px solid rgba(16, 185, 129, 0.2)',
                 minHeight: '400px',
                 display: 'flex',
@@ -191,8 +210,8 @@ const HomePage = () => {
                         border: '1px solid rgba(16, 185, 129, 0.2)'
                       }}
                     >
-                      <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500, marginBottom: '0.5rem' }}>Student</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#111827' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--home-muted)', fontWeight: 500, marginBottom: '0.5rem' }}>Student</div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--home-heading)' }}>
                         {activeStage === 0 && '✓ Profile Created'}
                         {activeStage === 1 && '→ Applying...'}
                         {activeStage === 2 && '→ Submitted'}
@@ -212,8 +231,8 @@ const HomePage = () => {
                         border: '1px solid rgba(16, 185, 129, 0.2)'
                       }}
                     >
-                      <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500, marginBottom: '0.5rem' }}>Trust</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#111827' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--home-muted)', fontWeight: 500, marginBottom: '0.5rem' }}>Trust</div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--home-heading)' }}>
                         {activeStage <= 2 && 'Waiting...'}
                         {activeStage === 3 && '→ Reviewing'}
                         {activeStage === 4 && '✓ Approved'}
@@ -257,10 +276,10 @@ const HomePage = () => {
                       borderRadius: '0.5rem'
                     }}
                   >
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--home-muted)', marginBottom: '0.25rem' }}>
                       Stage {activeStage + 1} of 5
                     </div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#111827' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--home-heading)' }}>
                       {activeStage === 0 && 'Student Registration & KYC Verification'}
                       {activeStage === 1 && 'Application Submission & Smart Matching'}
                       {activeStage === 2 && 'Trust Smart Filter Matching'}
@@ -273,7 +292,7 @@ const HomePage = () => {
                 {/* Auto-play Indicator */}
                 <div style={{
                   fontSize: '0.75rem',
-                  color: '#9ca3af',
+                  color: 'var(--home-faint)',
                   textAlign: 'center',
                   marginTop: '1rem'
                 }}>
@@ -286,20 +305,20 @@ const HomePage = () => {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24" style={{ backgroundColor: '#f0fdf4' }}>
+      <section id="features" className="py-24" style={{ backgroundColor: 'var(--home-surface-alt)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-20">
             <h2 className="mb-4" style={{
               fontSize: 'clamp(1.875rem, 5vw, 2.25rem)',
               fontWeight: 700,
-              color: '#111827',
+              color: 'var(--home-heading)',
               letterSpacing: '-0.5px'
             }}>
               Empowering Education Through Technology
             </h2>
             <p style={{
               fontSize: '1.05rem',
-              color: '#4b5563',
+              color: 'var(--home-copy)',
               maxWidth: '42rem',
               margin: '0 auto',
               lineHeight: 1.7
@@ -315,9 +334,10 @@ const HomePage = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: index * 0.1 }}
-                className="rounded-2xl p-8 hover:shadow-lg transition-all transform hover:scale-105 border border-green-200"
+                className="rounded-2xl p-8 hover:shadow-lg transition-all transform hover:scale-105 border"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(240,253,250,0.6) 100%)',
+                  background: 'var(--home-feature-gradient)',
+                  borderColor: 'var(--home-border)',
                   backdropFilter: 'blur(10px)'
                 }}
               >
@@ -331,7 +351,7 @@ const HomePage = () => {
                 </h3>
                 <p style={{
                   fontSize: '0.95rem',
-                  color: '#4b5563',
+                  color: 'var(--home-copy)',
                   lineHeight: 1.6
                 }}>
                   {feature.description}
@@ -343,12 +363,12 @@ const HomePage = () => {
       </section>
 
       {/* About Us Section */}
-      <section id="about" className="py-24" style={{ backgroundColor: '#fafbf8' }}>
+      <section id="about" className="py-24" style={{ backgroundColor: 'var(--home-surface)' }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 style={{
             fontSize: 'clamp(1.875rem, 5vw, 2.25rem)',
             fontWeight: 700,
-            color: '#111827',
+            color: 'var(--home-heading)',
             marginBottom: '2rem',
             letterSpacing: '-0.5px'
           }}>
@@ -356,7 +376,7 @@ const HomePage = () => {
           </h2>
           <p style={{
             fontSize: '1.05rem',
-            color: '#4b5563',
+            color: 'var(--home-copy)',
             lineHeight: 1.8,
             marginBottom: '2rem'
           }}>
@@ -385,7 +405,7 @@ const HomePage = () => {
                   {item.title}
                 </h3>
                 <p style={{
-                  color: '#4b5563',
+                  color: 'var(--home-copy)',
                   lineHeight: 1.6
                 }}>
                   {item.desc}
@@ -430,7 +450,7 @@ const HomePage = () => {
               to="/signup"
               className="inline-block px-8 py-4 rounded-xl text-lg font-semibold hover:shadow-lg transition-all transform hover:scale-105"
               style={{
-                backgroundColor: 'white',
+                backgroundColor: 'var(--home-card)',
                 color: '#10b981'
               }}
             >

@@ -17,6 +17,12 @@ import TrustLayout from './components/layouts/TrustLayout';
 import AdminLayout from './components/layouts/AdminLayout';
 
 function App() {
+  React.useEffect(() => {
+    const savedTheme = localStorage.getItem('scholarbridge-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', savedTheme ? savedTheme === 'dark' : prefersDark);
+  }, []);
+
   return (
     <AuthProvider>
       <Router>
